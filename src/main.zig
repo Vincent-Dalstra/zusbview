@@ -18,32 +18,23 @@ pub fn main() !void {
     try stdout.writeAll("HELLO!\n");
     try stdout.flush();
 
+    var count_devices: usize = 0;
+    var count_root_hubs: usize = 0;
+
     var line_no: usize = 0;
     while (true) {
         const bare_line = try stdin.takeDelimiter('\n') orelse break;
         const line = std.mem.trim(u8, bare_line, "\r");
         line_no += 1;
 
-        try stdout.print("line {}, length {}: {s}\n", .{ line_no, line.len, line });
-        try stdout.flush();
-    }
-}
-
-test "simple test" {
-    const gpa = std.testing.allocator;
-    var list: std.ArrayList(i32) = .empty;
-    defer list.deinit(gpa); // Try commenting this out and see if zig detects the memory leak!
-    try list.append(gpa, 42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
-}
-
-test "fuzz example" {
-    const Context = struct {
-        fn testOne(context: @This(), input: []const u8) anyerror!void {
-            _ = context;
-            // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
-            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
+        if (0 < std.mem.count(u8, line, "root hub")) {
+            count_root_hubs += 1;
+        } else {
+            count_devices += 1;
         }
-    };
-    try std.testing.fuzz(Context{}, Context.testOne, .{});
+
+        std.debug.print("line {}, length {}: {s}\n", .{ line_no, line.len, line });
+    }
+    try stdout.print("Root hubs = {}, devices = {}\n", .{ count_root_hubs, count_devices });
+    try stdout.flush();
 }
