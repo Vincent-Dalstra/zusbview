@@ -1,0 +1,44 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+	"zig.zls.enabled": "on",
+		// You can add more Zig and ZLS options here
+
+		// Whether to enable build-on-save diagnostics
+		//
+		// Further information about build-on save:
+		// https://zigtools.org/zls/guides/build-on-save/
+		"zig.buildOnSaveProvider": "extension",
+		"zig.buildOnSaveArgs": ["check"],
+
+		// All nested settings will only affect Zig files.
+		"[zig]": {
+			// Formatting with ZLS matches `zig fmt`.
+			// "editor.formatOnSave": false,
+
+			// "editor.inlayHints.enabled": "off",
+
+			// overwrite words when accepting completions
+			"editor.suggest.insertMode": "replace",
+			"editor.codeActionsOnSave": {
+			// Run code actions that currently supports adding and removing discards.
+			// "source.fixAll": "explicit",
+			
+			// Run code actions that sorts @import declarations.
+			// "source.organizeImports": "explicit",
+			}
+		},
+		"editor.semanticTokenColorCustomizations": {
+			"rules": {
+				"*.deprecated": {
+					// highlight semantic tokens that are marked as "deprecated"
+					"strikethrough": true
+				}
+			}
+		}
+	}
+}

@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Zig Project (LLDB)",
+      "type": "lldb",
+      "request": "launch",
+//      "program": "${workspaceFolder}/${input:targetProject}/zig-out/bin/${input:targetProject}",
+      "program": "${workspaceFolder}/zig-out/bin/zusbview",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "terminal": "integrated",
+      "preLaunchTask": "build-zig-dynamic",
+      "env": {}
+    }
+  ],
+}
