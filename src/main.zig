@@ -1,5 +1,14 @@
 const std = @import("std");
+const assert = std.debug.assert;
+
 const zusbview = @import("zusbview");
+
+const UsbType = enum {
+    not_recognised,
+    root_hub,
+    hub,
+    device,
+};
 
 pub fn main() !void {
     // Memory
@@ -20,21 +29,65 @@ pub fn main() !void {
 
     var count_devices: usize = 0;
     var count_root_hubs: usize = 0;
+    var count_hubs: usize = 0;
 
-    var line_no: usize = 0;
+    var prev_depth: u8 = 0;
     while (true) {
-        const bare_line = try stdin.takeDelimiter('\n') orelse break;
-        const line = std.mem.trim(u8, bare_line, "\r");
-        line_no += 1;
+        var usb_type: ?UsbType = null;
+        var depth: u8 = 0;
 
-        if (0 < std.mem.count(u8, line, "root hub")) {
+        const bare_line0 = try stdin.takeDelimiter('\n') orelse break;
+        const line0 = std.mem.trim(u8, bare_line0, "\r");
+        const bare_line1 = try stdin.takeDelimiter('\n') orelse break;
+        const line1 = std.mem.trim(u8, bare_line1, "\r");
+
+        std.debug.print("length {}: {s}\n", .{ line0.len, line0 });
+        std.debug.print("length {}: {s}\n", .{ line1.len, line1 });
+
+        if (0 < std.mem.count(u8, line0, "Class=root_hub")) {
+            usb_type = .root_hub;
             count_root_hubs += 1;
+        } else if (0 < std.mem.count(u8, line0, "Class=Hub")) {
+            usb_type = .hub;
+            count_hubs += 1;
         } else {
+            usb_type = .device;
             count_devices += 1;
         }
 
-        std.debug.print("line {}, length {}: {s}\n", .{ line_no, line.len, line });
+        var slice = line0;
+        while (true) {
+            if (std.mem.eql(u8, "    ", slice[0..4])) {
+                slice = slice[4..];
+                depth += 1;
+                continue;
+            } else if (std.mem.eql(u8, "/:  ", slice[0..4])) {
+                assert(depth == 0);
+                assert(usb_type.? == .root_hub);
+            } else if (std.mem.eql(u8, "|__ ", slice[0..4])) {
+                assert(depth >= 1);
+            } else {
+                unreachable;
+            }
+        }
+
+        // Only 3 chained hubs are permitted by USB spec
+        if (usb_type == .hub) assert(depth <= 3);
+        if (usb_type == .device) assert(depth <= 4);
+
+        assert(depth <= prev_depth + 1);
+
+        prev_depth = depth;
     }
-    try stdout.print("Root hubs = {}, devices = {}\n", .{ count_root_hubs, count_devices });
+    try stdout.print("Root hubs = {}, hubs = {}, devices = {}\n", .{ count_root_hubs, count_hubs, count_devices });
     try stdout.flush();
+}
+
+fn grabLine(reader: *std.io.Reader) ?[]u8 {
+    const bare_line = try reader.takeDelimiter('\n') orelse return null;
+    const line = std.mem.trim(u8, bare_line, "\r");
+
+    std.debug.print("length {}: {s}\n", .{ line.len, line });
+
+    return line;
 }
