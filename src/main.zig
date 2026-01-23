@@ -2,13 +2,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const zusbview = @import("zusbview");
-
-const UsbType = enum {
-    not_recognised,
-    root_hub,
-    hub,
-    device,
-};
+const usbTypes = zusbview.usbTypes;
+const gv = zusbview.graphviz;
 
 pub fn main() !void {
     // Memory
@@ -33,7 +28,7 @@ pub fn main() !void {
 
     var prev_depth: u8 = 0;
     while (true) {
-        var usb_type: ?UsbType = null;
+        var usb_type: ?usbTypes.DeviceType = null;
         var depth: u8 = 0;
 
         const bare_line0 = try stdin.takeDelimiter('\n') orelse break;
@@ -55,6 +50,8 @@ pub fn main() !void {
             count_devices += 1;
         }
 
+        var parents: [usbTypes.usb_max_tiers - 1][]const u8 = undefined;
+
         var slice = line0;
         while (true) {
             if (std.mem.eql(u8, "    ", slice[0..4])) {
@@ -64,17 +61,21 @@ pub fn main() !void {
             } else if (std.mem.eql(u8, "/:  ", slice[0..4])) {
                 assert(depth == 0);
                 assert(usb_type.? == .root_hub);
+                break;
             } else if (std.mem.eql(u8, "|__ ", slice[0..4])) {
                 assert(depth >= 1);
+                break;
             } else {
                 unreachable;
             }
+            unreachable;
         }
 
-        // Only 3 chained hubs are permitted by USB spec
-        if (usb_type == .hub) assert(depth <= 3);
-        if (usb_type == .device) assert(depth <= 4);
+        // Only 5 chained hubs are permitted by USB spec (Root hub = 'Tier 1', max device 'Tier 7')
+        if (usb_type == .hub) assert(depth < (usb_max_tiers - 1));
+        if (usb_type == .device) assert(depth < usb_max_tiers);
 
+        // lsusb -tv shows them in order, so we shouldn't jump a tier!
         assert(depth <= prev_depth + 1);
 
         prev_depth = depth;
