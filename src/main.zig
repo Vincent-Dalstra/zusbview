@@ -5,6 +5,8 @@ const zusbview = @import("zusbview");
 const usbTypes = zusbview.usbTypes;
 const gv = zusbview.graphviz;
 
+const usb_max_tiers = usbTypes.usb_max_tiers;
+
 pub fn main() !void {
     // Memory
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -50,7 +52,7 @@ pub fn main() !void {
             count_devices += 1;
         }
 
-        var parents: [usbTypes.usb_max_tiers - 1][]const u8 = undefined;
+        // var parents: [usbTypes.usb_max_tiers - 1][]const u8 = undefined;
 
         var slice = line0;
         while (true) {
