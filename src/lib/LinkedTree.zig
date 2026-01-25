@@ -3,8 +3,14 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
+const testing = std.testing;
 
-pub fn TreeNode(T: type) type {
+const LinkedTree = @This();
+
+/// This struct contains only pointers and not any data payload. The
+/// intended usage is to embed it intrusively into another data structure and
+/// access the data with `@fieldParentPtr`.
+pub fn Node() type {
     return struct {
         const Self = @This();
 
@@ -14,13 +20,9 @@ pub fn TreeNode(T: type) type {
 
         childCount: usize = 0, // Only used for checking
 
-        val: T,
-
         const init = single; // Alternate name
-        pub fn single(val: T) Self {
-            return .{
-                .val = val,
-            };
+        pub fn single() Self {
+            return .{};
         }
 
         pub fn attachItem(self: *Self, item: *Self) void {
@@ -120,7 +122,8 @@ pub fn TreeNode(T: type) type {
             return item;
         }
 
-        pub fn len(self: Self) usize {
+        const len = countChildren; // Alternate name
+        pub fn countChildren(self: Self) usize {
             var next = self.child;
 
             var count: usize = 0;
@@ -136,58 +139,66 @@ pub fn TreeNode(T: type) type {
     };
 }
 
-const TestTreeNode = TreeNode(u8);
+const LinkedList = std.SinglyLinkedList;
+
+const L = struct {
+    data: u32,
+    node: LinkedTree.Node() = .{},
+};
 
 test "Create tree node" {
-    const root: TestTreeNode = .init(0);
+    var root: L = .{ .data = 99 };
 
-    try std.testing.expectEqual(0, root.val);
-    try std.testing.expectEqual(0, root.len());
+    try testing.expectEqual(99, root.data);
+    try testing.expectEqual(0, root.node.len());
 }
 
 test "Add children to node" {
-    var root: TestTreeNode = .init(1);
-    var c0: TestTreeNode = .init(13);
-    var c1: TestTreeNode = .init(255);
+    var root: L = .{ .data = 1 };
+    var c0: L = .{ .data = 13 };
+    var c1: L = .{ .data = 255 };
+    try testing.expectEqual(1, root.data);
 
-    try std.testing.expectEqual(1, root.val);
+    root.node.attachItem(&c0.node);
+    try testing.expectEqual(1, root.node.len());
+    try testing.expectEqual(&c0.node, root.node.getChild(0).?);
 
-    root.attachItem(&c0);
-    try std.testing.expectEqual(1, root.len());
-    try std.testing.expectEqual(c0.val, root.getChild(0).?.val);
-
-    root.attachItem(&c1);
-    try std.testing.expectEqual(2, root.len());
-    try std.testing.expectEqual(c0.val, root.getChild(0).?.val);
-    try std.testing.expectEqual(c1.val, root.getChild(1).?.val);
+    root.node.attachItem(&c1.node);
+    try testing.expectEqual(2, root.node.len());
+    try testing.expectEqual(&c0.node, root.node.getChild(0).?);
+    try testing.expectEqual(&c1.node, root.node.getChild(1).?);
 
     // Recursive
-    var c1c0: TestTreeNode = .init(20);
+    var c1c0: L = .{ .data = 20 };
 
-    root.getChild(1).?.attachItem(&c1c0);
-    try std.testing.expectEqual(1, root.getChild(1).?.len());
-    try std.testing.expectEqual(20, root.getChild(1).?.getChild(0).?.val);
+    root.node.getChild(1).?.attachItem(&c1c0.node);
+    try testing.expectEqual(1, root.node.getChild(1).?.len());
+    try testing.expectEqual(&c1c0.node, root.node.getChild(1).?.getChild(0).?);
+
+    // Access host structure using @fieldParentPtr
+    const l: *L = @fieldParentPtr("node", root.node.getChild(1).?.getChild(0).?);
+    try testing.expectEqual(c1c0.data, l.data);
 }
 
 test "Remove children from node" {
-    var root: TestTreeNode = .init(1);
-    var c0: TestTreeNode = .init(13);
-    var c1: TestTreeNode = .init(255);
-    var c1c0: TestTreeNode = .init(20);
+    var root: L = .{ .data = 1 };
+    var c0: L = .{ .data = 13 };
+    var c1: L = .{ .data = 255 };
+    var c1c0: L = .{ .data = 20 };
 
-    root.attachItem(&c0);
-    root.attachItem(&c1);
-    root.getChild(1).?.attachItem(&c1c0);
+    root.node.attachItem(&c0.node);
+    root.node.attachItem(&c1.node);
+    root.node.getChild(1).?.attachItem(&c1c0.node);
 
-    try std.testing.expectEqual(2, root.len());
+    try testing.expectEqual(2, root.node.len());
 
-    const p1 = root.detachItem(0).?;
-    try std.testing.expectEqual(1, root.len());
-    try std.testing.expectEqual(c0.val, p1.val);
+    const p1 = root.node.detachItem(0).?;
+    try testing.expectEqual(1, root.node.len());
+    try testing.expectEqual(&c0.node, p1);
 
-    const p2 = root.detachItem(0).?;
-    try std.testing.expectEqual(0, root.len());
-    try std.testing.expectEqual(c1.val, p2.val);
-    try std.testing.expectEqual(1, p2.len());
-    try std.testing.expectEqual(c1c0.val, p2.getChild(0).?.val);
+    const p2 = root.node.detachItem(0).?;
+    try testing.expectEqual(0, root.node.len());
+    try testing.expectEqual(&c1.node, p2);
+    try testing.expectEqual(1, p2.len());
+    try testing.expectEqual(&c1c0.node, p2.getChild(0).?);
 }
