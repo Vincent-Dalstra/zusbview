@@ -11,30 +11,22 @@ pub const GraphError = error{
 pub const Graph = struct {
     directed: bool = true,
 
+    arena: std.heap.ArenaAllocator = undefined,
     alloc: Allocator = undefined,
     name: []const u8 = undefined,
     nodes: std.ArrayList(Node) = .empty,
     edges: std.ArrayList(Edge) = .empty,
 
-    /// Suggest using an arena allocator
-    pub fn init(self: *Graph, arena: Allocator, name: []const u8) !void {
-        self.alloc = arena;
+    pub fn init(self: *Graph, gpa: Allocator, name: []const u8) !void {
+        self.arena = std.heap.ArenaAllocator.init(gpa); // Must use an arena allocator!
+        self.alloc = self.arena.allocator();
+
         self.name = try self.alloc.dupe(u8, name);
         assert(self.nodes.items.len == 0);
     }
 
     pub fn deinit(self: *Graph) void {
-        self.alloc.free(self.name);
-
-        for (self.nodes.items) |*node| {
-            self.alloc.free(node.name);
-        }
-        self.nodes.deinit(self.alloc);
-
-        // for (self.edges.items) |*edge| {
-        //     self.alloc.free(edge.name);
-        // }
-        self.edges.deinit(self.alloc);
+        self.arena.deinit(); // All together now!
     }
 
     pub fn newNode(self: *Graph, name: []const u8) !void {
