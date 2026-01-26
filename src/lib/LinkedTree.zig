@@ -10,140 +10,138 @@ const LinkedTree = @This();
 /// This struct contains only pointers and not any data payload. The
 /// intended usage is to embed it intrusively into another data structure and
 /// access the data with `@fieldParentPtr`.
-pub fn Node() type {
-    return struct {
-        const Self = @This();
+pub const Node = struct {
+    const Self = @This();
 
-        next: ?*Self = null,
-        prev: ?*Self = null,
-        child: ?*Self = null,
+    next: ?*Self = null,
+    prev: ?*Self = null,
+    child: ?*Self = null,
 
-        childCount: usize = 0, // Only used for checking
+    childCount: usize = 0, // Only used for checking
 
-        const init = single; // Alternate name
-        pub fn single() Self {
-            return .{};
+    const init = single; // Alternate name
+    pub fn single() Self {
+        return .{};
+    }
+
+    pub fn attachItem(self: *Self, item: *Self) void {
+        assert(item.prev == null); // Must not already have a parent!
+        assert(item.next == null);
+
+        if (self.child) |child| {
+            // append to the end of the list
+            assert(child.prev != null);
+            child.prev.?.suffix_object(item);
+            // self.child.?.prev = item;
+            child.prev = item;
+        } else {
+            // list is empty; start a new list
+            self.child = item;
+            item.prev = item;
+            item.next = null;
         }
 
-        pub fn attachItem(self: *Self, item: *Self) void {
-            assert(item.prev == null); // Must not already have a parent!
+        self.childCount += 1;
+    }
+
+    fn suffix_object(prev: *Self, item: *Self) void {
+        prev.next = item;
+        item.prev = prev;
+    }
+
+    pub fn getChild(self: *Self, index: usize) ?*Self {
+        var child = self.child;
+        var count: usize = 0;
+        while (count < index) {
+            child = child.?.next;
+            count += 1;
+        }
+        return child.?;
+    }
+
+    pub fn detachItem(self: *Self, index: usize) ?*Self {
+        const child = self.getChild(index) orelse return null;
+
+        return self.detachItemViaPointer(child);
+    }
+
+    pub fn detachItemViaPointer(parent: *Self, item: *Self) *Self {
+        assert(item.prev != null); // Children always have 'prev' set
+        assert(parent.childCount > 0); // Check internal counter
+
+        if (item.prev == item) {
+            // Only child
+
+            // Sanity check existing links
             assert(item.next == null);
 
-            if (self.child) |child| {
-                // append to the end of the list
-                assert(child.prev != null);
-                child.prev.?.suffix_object(item);
-                // self.child.?.prev = item;
-                child.prev = item;
-            } else {
-                // list is empty; start a new list
-                self.child = item;
-                item.prev = item;
-                item.next = null;
-            }
+            parent.child = null;
+        } else if (item.next == null) {
+            // last item
+            var firstChild = parent.child.?;
+            var newLast = item.prev.?;
 
-            self.childCount += 1;
+            // Sanity check existing links
+            assert(firstChild.prev == item);
+            assert(newLast.next == item);
+
+            firstChild.prev = newLast;
+            newLast.next = null;
+        } else if (parent.child.? == item) {
+            // first item
+            var newFirst = item.next.?;
+            const lastChild = item.prev.?;
+
+            // Sanity check existing links
+            assert(newFirst.prev == item);
+            assert(lastChild.next == null);
+
+            parent.child = newFirst;
+            newFirst.prev = lastChild;
+        } else {
+            // somewhere in the middle
+            var prev = item.prev.?;
+            var next = item.next.?;
+
+            // Sanity check existing links
+            assert(prev.next == item);
+            assert(next.prev == item);
+
+            prev.next = next;
+            next.prev = prev;
         }
 
-        fn suffix_object(prev: *Self, item: *Self) void {
-            prev.next = item;
-            item.prev = prev;
+        assert(parent.childCount > 0); // Check against internal counter
+        parent.childCount -= 1;
+
+        // Clear item's references to the parent tree
+        item.prev = null;
+        item.next = null;
+
+        return item;
+    }
+
+    const len = countChildren; // Alternate name
+    pub fn countChildren(self: Self) usize {
+        var next = self.child;
+
+        var count: usize = 0;
+        while (next) |child| {
+            count += 1;
+            next = child.next;
         }
 
-        pub fn getChild(self: *Self, index: usize) ?*Self {
-            var child = self.child;
-            var count: usize = 0;
-            while (count < index) {
-                child = child.?.next;
-                count += 1;
-            }
-            return child.?;
-        }
+        assert(count == self.childCount); // Check against internal counter
 
-        pub fn detachItem(self: *Self, index: usize) ?*Self {
-            const child = self.getChild(index) orelse return null;
-
-            return self.detachItemViaPointer(child);
-        }
-
-        pub fn detachItemViaPointer(parent: *Self, item: *Self) *Self {
-            assert(item.prev != null); // Children always have 'prev' set
-            assert(parent.childCount > 0); // Check internal counter
-
-            if (item.prev == item) {
-                // Only child
-
-                // Sanity check existing links
-                assert(item.next == null);
-
-                parent.child = null;
-            } else if (item.next == null) {
-                // last item
-                var firstChild = parent.child.?;
-                var newLast = item.prev.?;
-
-                // Sanity check existing links
-                assert(firstChild.prev == item);
-                assert(newLast.next == item);
-
-                firstChild.prev = newLast;
-                newLast.next = null;
-            } else if (parent.child.? == item) {
-                // first item
-                var newFirst = item.next.?;
-                const lastChild = item.prev.?;
-
-                // Sanity check existing links
-                assert(newFirst.prev == item);
-                assert(lastChild.next == null);
-
-                parent.child = newFirst;
-                newFirst.prev = lastChild;
-            } else {
-                // somewhere in the middle
-                var prev = item.prev.?;
-                var next = item.next.?;
-
-                // Sanity check existing links
-                assert(prev.next == item);
-                assert(next.prev == item);
-
-                prev.next = next;
-                next.prev = prev;
-            }
-
-            assert(parent.childCount > 0); // Check against internal counter
-            parent.childCount -= 1;
-
-            // Clear item's references to the parent tree
-            item.prev = null;
-            item.next = null;
-
-            return item;
-        }
-
-        const len = countChildren; // Alternate name
-        pub fn countChildren(self: Self) usize {
-            var next = self.child;
-
-            var count: usize = 0;
-            while (next) |child| {
-                count += 1;
-                next = child.next;
-            }
-
-            assert(count == self.childCount); // Check against internal counter
-
-            return count;
-        }
-    };
-}
+        return count;
+    }
+};
 
 const LinkedList = std.SinglyLinkedList;
 
 const L = struct {
     data: u32,
-    node: LinkedTree.Node() = .{},
+    node: LinkedTree.Node = .{},
 };
 
 test "Create tree node" {

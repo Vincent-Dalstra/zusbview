@@ -13,7 +13,10 @@ pub const Graph = struct {
 
     arena: std.heap.ArenaAllocator = undefined,
     alloc: Allocator = undefined,
+
     name: []const u8 = undefined,
+
+    // Todo: Use a data structure which can be added to without invalidating existing nodes/edges!
     nodes: std.ArrayList(Node) = .empty,
     edges: std.ArrayList(Edge) = .empty,
 
@@ -22,18 +25,25 @@ pub const Graph = struct {
         self.alloc = self.arena.allocator();
 
         self.name = try self.alloc.dupe(u8, name);
+
+        // temporary fix; use a data structure that doesn't invalidate existing nodes/edges!
+        try self.nodes.ensureTotalCapacityPrecise(self.alloc, 1024);
+        try self.edges.ensureTotalCapacityPrecise(self.alloc, 1024);
+
         assert(self.nodes.items.len == 0);
+        assert(self.edges.items.len == 0);
     }
 
     pub fn deinit(self: *Graph) void {
         self.arena.deinit(); // All together now!
     }
 
-    pub fn newNode(self: *Graph, name: []const u8) !void {
-        const new: Node = .{
+    pub fn newNode(self: *Graph, name: []const u8) !*Node {
+        const new = try self.nodes.addOne(self.alloc);
+        new.* = .{
             .name = try self.alloc.dupe(u8, name),
         };
-        try self.nodes.append(self.alloc, new);
+        return new;
     }
 
     pub fn findNode(self: *Graph, name: []const u8) ?*Node {
@@ -75,7 +85,7 @@ pub const Graph = struct {
 
     pub fn print(self: *Graph, writer: *std.io.Writer) !void {
         try writer.print(
-            "{s} {s} {{\n", // escaped '{'
+            "{s} \"{s}\" {{\n", // escaped '{'
             .{
                 if (self.directed) "digraph" else "graph",
                 self.name,
@@ -115,9 +125,9 @@ test "export" {
     try graph.init(testAlloc, "testGraph");
     defer graph.deinit();
 
-    try graph.newNode("a");
-    try graph.newNode("b");
-    try graph.newNode("c");
+    _ = try graph.newNode("a");
+    _ = try graph.newNode("b");
+    _ = try graph.newNode("c");
 
     const a = graph.findNode("a") orelse unreachable;
     const b = graph.findNode("b") orelse unreachable;
