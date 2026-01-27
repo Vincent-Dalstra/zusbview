@@ -22,10 +22,23 @@ pub const DeviceType = enum {
 pub const Device = struct {
     type: DeviceType,
 
-    nameField: []const u8,
+    nameField: ?[]const u8 = null,
+
+    bus: u8 = undefined,
+    port: u8 = undefined,
+    iface: u8 = undefined,
 
     pub fn getName(self: Device) []const u8 {
-        return self.nameField;
+        return self.nameField.?;
+    }
+
+    pub fn calcName(self: Device, alloc: Allocator) !void {
+        self.nameField = switch (self.type) {
+            .root_hub, .hub => try std.fmt.allocPrint(alloc, "Bus {s}\nPort {s}", .{ self.bus, self.iface }),
+            .device => try std.fmt.allocPrint(alloc, "Bus {s}\nPort {s}\n iface {s}", .{ self.bus, self.iface, self.port }),
+            else => unreachable,
+        };
+        return;
     }
 };
 
