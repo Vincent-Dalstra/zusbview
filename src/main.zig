@@ -21,6 +21,10 @@ pub fn main() !void {
     var stdout_writer = std.fs.File.stdout().writer(stdout_buf);
     const stdout: *std.io.Writer = &stdout_writer.interface;
 
+    const stderr_buf: []u8 = try aalloc.alloc(u8, (16 * 1024));
+    var stderr_writer = std.fs.File.stderr().writer(stderr_buf);
+    const stderr: *std.io.Writer = &stderr_writer.interface;
+
     var count_devices: usize = 0;
     var count_root_hubs: usize = 0;
     var count_hubs: usize = 0;
@@ -120,9 +124,10 @@ pub fn main() !void {
     try deviceTreeRoot.exportDot(&graph);
 
     try graph.print(stdout);
-
-    try stdout.print("Root hubs = {}, hubs = {}, devices = {}\n", .{ count_root_hubs, count_hubs, count_devices });
     try stdout.flush();
+
+    try stderr.print("Root hubs = {}, hubs = {}, devices = {}\n", .{ count_root_hubs, count_hubs, count_devices });
+    try stderr.flush();
 }
 
 fn grabLine(reader: *std.io.Reader) ?[]u8 {
