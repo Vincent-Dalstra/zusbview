@@ -102,40 +102,19 @@ pub fn main() !void {
         // need a unique name... we can use the 'ID' on the second line
 
         if (dev.type == .root_hub) {
-            assert(std.mem.eql(u8, "Bus ", slice[0..4]));
-            slice = slice[4..];
-
-            {
-                const nstr = std.mem.sliceTo(slice, '.');
-                dev.bus = try std.fmt.parseUnsigned(u8, nstr, 10);
-                slice = slice[(nstr.len)..];
-            }
-
-            assert(std.mem.eql(u8, ".", slice[0..1]));
-            slice = slice[1..];
+            slice = skipString(slice, "Bus ");
+            slice = try parseIntUpTo(slice, '.', &dev.bus);
+            slice = skipString(slice, ".");
 
             // temp
         } else {
             dev.bus = hierarchy[1].device.bus;
         }
 
-        assert(std.mem.eql(u8, "Port ", slice[0..5]));
-        slice = slice[5..];
-
-        {
-            const nstr = std.mem.sliceTo(slice, ':');
-            dev.port = try std.fmt.parseUnsigned(u8, nstr, 10);
-            slice = slice[(nstr.len)..];
-        }
-
-        assert(std.mem.eql(u8, ": Dev ", slice[0..6]));
-        slice = slice[6..];
-
-        {
-            const nstr = std.mem.sliceTo(slice, ',');
-            dev.dev = try std.fmt.parseUnsigned(u8, nstr, 10);
-            slice = slice[(nstr.len)..];
-        }
+        slice = skipString(slice, "Port ");
+        slice = try parseIntUpTo(slice, ':', &dev.port);
+        slice = skipString(slice, ": Dev ");
+        slice = try parseIntUpTo(slice, ',', &dev.dev);
 
         try dev.calcName(aalloc);
 
@@ -178,4 +157,15 @@ fn grabLine(reader: *std.io.Reader) ?[]u8 {
     // std.debug.print("length {}: {s}\n", .{ line.len, line });
 
     return line;
+}
+
+fn skipString(slice: []const u8, expected: []const u8) []const u8 {
+    assert(std.mem.eql(u8, expected, slice[0..expected.len]));
+    return slice[expected.len..];
+}
+
+fn parseIntUpTo(slice: []const u8, comptime end: u8, out: *u8) ![]const u8 {
+    const number_str = std.mem.sliceTo(slice, end);
+    out.* = try std.fmt.parseUnsigned(u8, number_str, 10);
+    return slice[number_str.len..];
 }
