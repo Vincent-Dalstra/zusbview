@@ -25,7 +25,7 @@ pub fn main() !void {
     var stderr_writer = std.fs.File.stderr().writer(stderr_buf);
     const stderr: *std.io.Writer = &stderr_writer.interface;
 
-    var count_ifaces: usize = 0;
+    var count_devices: usize = 0;
     var count_root_hubs: usize = 0;
     var count_hubs: usize = 0;
 
@@ -64,7 +64,7 @@ pub fn main() !void {
             count_hubs += 1;
         } else {
             dev.type = .iface;
-            count_ifaces += 1;
+            count_devices += 1;
         }
 
         var slice = line0;
@@ -115,7 +115,7 @@ pub fn main() !void {
         slice = skipString(slice, ": Dev ");
         slice = try parseIntUpTo(slice, ',', &dev.dev);
 
-        if (dev.type == .hub or dev.type == .device) {
+        if (dev.type == .hub or dev.type == .iface) {
             slice = skipString(slice, ", If ");
             slice = try parseIntUpTo(slice, ',', &dev.iface);
         }
@@ -148,7 +148,7 @@ pub fn main() !void {
     try graph.print(stdout);
     try stdout.flush();
 
-    try stderr.print("Root hubs = {}, hubs = {}, devices = {}\n", .{ count_root_hubs, count_hubs, count_ifaces });
+    try stderr.print("Root hubs = {}, hubs = {}, devices = {}\n", .{ count_root_hubs, count_hubs, count_devices });
     try stderr.flush();
 }
 

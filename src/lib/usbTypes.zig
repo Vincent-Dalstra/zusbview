@@ -31,8 +31,10 @@ pub const Device = struct {
     pub fn getUniqueName(self: *Device, alloc: Allocator) ![]u8 {
         return switch (self.type) {
             .root => try std.fmt.allocPrint(alloc, "Root", .{}),
-            .root_hub, .hub => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}", .{ self.bus.?, self.dev.? }),
-            .device => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n iface {}", .{ self.bus.?, self.dev.?, self.iface.? }),
+            .root_hub => try std.fmt.allocPrint(alloc, "ROOT HUB\nBus {}\nDev {}", .{ self.bus.?, self.dev.? }),
+            .hub => try std.fmt.allocPrint(alloc, "HUB\nBus {}\nDev {}", .{ self.bus.?, self.dev.? }),
+            .iface => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n iface {}", .{ self.bus.?, self.dev.?, self.iface.? }),
+            .device => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}", .{ self.bus.?, self.dev.? }),
             else => unreachable,
         };
     }
@@ -69,13 +71,34 @@ pub const DeviceTree = struct {
             var fixedBufAllocator = std.heap.FixedBufferAllocator.init(&buf);
             const fballoc = fixedBufAllocator.allocator();
 
-            const name = try child.device.getUniqueName(fballoc);
+            switch (child.device.type) {
+                .root_hub, .hub => {
+                    const name = try child.device.getUniqueName(fballoc);
 
-            const newGraphNode = try graph.newNode(name);
-            try graph.newEdge(parentGraphNode, newGraphNode);
+                    // Add to the graph
+                    const newGraphNode = try graph.newNode(name);
+                    try graph.newEdge(parentGraphNode, newGraphNode);
 
-            if (childNode.child != null) {
-                try exportDotRecursive(child, graph, newGraphNode);
+                    if (childNode.child != null) {
+                        try exportDotRecursive(child, graph, newGraphNode);
+                    }
+                },
+                .iface => {
+                    const iface_name = try child.device.getUniqueName(fballoc);
+
+                    var temp = child.device;
+                    temp.type = .device;
+                    const dev_name = try temp.getUniqueName(fballoc);
+
+                    if (!graph.hasNode(dev_name)) {
+                        const newGraphNode = try graph.newNode(dev_name);
+                        try graph.newEdge(parentGraphNode, newGraphNode);
+                    }
+
+                    const newGraphNode = try graph.newNode(iface_name);
+                    try graph.newEdge(graph.findNode(dev_name).?, newGraphNode);
+                },
+                else => unreachable,
             }
 
             nextChildNode = childNode.next;
