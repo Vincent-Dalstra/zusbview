@@ -42,7 +42,10 @@ pub fn main() !void {
 
     var prev_depth: u8 = 0;
     while (true) {
-        var usb_type: usbTypes.DeviceType = undefined;
+        var dev: usbTypes.Device = .{
+            .type = undefined,
+        };
+
         var depth: u8 = 1;
 
         const bare_line0 = try stdin.takeDelimiter('\n') orelse break;
@@ -55,13 +58,13 @@ pub fn main() !void {
         // std.debug.print("length {}: {s}\n", .{ line1.len, line1 });
 
         if (0 < std.mem.count(u8, line0, "Class=root_hub")) {
-            usb_type = .root_hub;
+            dev.type = .root_hub;
             count_root_hubs += 1;
         } else if (0 < std.mem.count(u8, line0, "Class=Hub")) {
-            usb_type = .hub;
+            dev.type = .hub;
             count_hubs += 1;
         } else {
-            usb_type = .device;
+            dev.type = .device;
             count_devices += 1;
         }
 
@@ -76,7 +79,7 @@ pub fn main() !void {
                 slice = slice[4..];
 
                 assert(depth == 1);
-                assert(usb_type == .root_hub);
+                assert(dev.type == .root_hub);
                 break;
             } else if (std.mem.eql(u8, "|__ ", slice[0..4])) {
                 slice = slice[4..];
@@ -90,33 +93,51 @@ pub fn main() !void {
         }
 
         // Only 5 chained hubs are permitted by USB spec (Root hub = 'Tier 1', max device 'Tier 7')
-        if (usb_type == .hub) assert(depth <= (usb_max_tiers - 1));
-        if (usb_type == .device) assert(depth <= usb_max_tiers);
+        if (dev.type == .hub) assert(depth <= (usb_max_tiers - 1));
+        if (dev.type == .device) assert(depth <= usb_max_tiers);
 
         // lsusb -tv shows them in order, so we shouldn't jump a tier!
         assert(depth <= prev_depth + 1);
 
         // need a unique name... we can use the 'ID' on the second line
-        var id: []const u8 = undefined;
 
-        if (usb_type == .root_hub) {
+        if (dev.type == .root_hub) {
             assert(std.mem.eql(u8, "Bus ", slice[0..4]));
-            // slice = slice[4..0];
+            slice = slice[4..];
 
-            // const nstr = std.mem.sliceTo(slice, '.');
-            // const port_num = std.fmt.parseUnsigned(u8, nstr, 10);
-            // slice = slice[nstr.len..0];
+            {
+                const nstr = std.mem.sliceTo(slice, '.');
+                dev.bus = try std.fmt.parseUnsigned(u8, nstr, 10);
+                slice = slice[(nstr.len)..];
+            }
 
-            id = std.mem.sliceTo(slice, ',');
+            assert(std.mem.eql(u8, ".", slice[0..1]));
+            slice = slice[1..];
+
+            // temp
         } else {
-            const first_comma = std.mem.sliceTo(slice, ',').len;
-            const second_comma = std.mem.sliceTo(slice[(first_comma + 1)..], ',').len;
-            const total = first_comma + second_comma + 1;
-            id = slice[0..total];
+            dev.bus = hierarchy[1].device.bus;
         }
 
-        const temp = try std.fmt.allocPrint(aalloc, "{s}\naaabdsd", .{id});
-        defer aalloc.free(temp);
+        assert(std.mem.eql(u8, "Port ", slice[0..5]));
+        slice = slice[5..];
+
+        {
+            const nstr = std.mem.sliceTo(slice, ':');
+            dev.port = try std.fmt.parseUnsigned(u8, nstr, 10);
+            slice = slice[(nstr.len)..];
+        }
+
+        assert(std.mem.eql(u8, ": Dev ", slice[0..6]));
+        slice = slice[6..];
+
+        {
+            const nstr = std.mem.sliceTo(slice, ',');
+            dev.dev = try std.fmt.parseUnsigned(u8, nstr, 10);
+            slice = slice[(nstr.len)..];
+        }
+
+        try dev.calcName(aalloc);
 
         // slice = std.mem.trim(u8, slice, " "); // Remove whitespace at start
 
@@ -129,7 +150,7 @@ pub fn main() !void {
         // Add to device tree
         hierarchy[depth] = try hierarchy[depth - 1].newDevice(
             aalloc,
-            .{ .type = usb_type, .nameField = id },
+            dev,
         );
 
         prev_depth = depth;

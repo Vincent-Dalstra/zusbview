@@ -26,16 +26,17 @@ pub const Device = struct {
 
     bus: u8 = undefined,
     port: u8 = undefined,
+    dev: u8 = undefined,
     iface: u8 = undefined,
 
     pub fn getName(self: Device) []const u8 {
         return self.nameField.?;
     }
 
-    pub fn calcName(self: Device, alloc: Allocator) !void {
+    pub fn calcName(self: *Device, alloc: Allocator) !void {
         self.nameField = switch (self.type) {
-            .root_hub, .hub => try std.fmt.allocPrint(alloc, "Bus {s}\nPort {s}", .{ self.bus, self.iface }),
-            .device => try std.fmt.allocPrint(alloc, "Bus {s}\nPort {s}\n iface {s}", .{ self.bus, self.iface, self.port }),
+            .root_hub, .hub => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}", .{ self.bus, self.dev }),
+            .device => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n iface {}", .{ self.bus, self.dev, self.port }),
             else => unreachable,
         };
         return;
