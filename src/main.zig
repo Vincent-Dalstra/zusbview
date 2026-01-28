@@ -25,14 +25,13 @@ pub fn main() !void {
     var stderr_writer = std.fs.File.stderr().writer(stderr_buf);
     const stderr: *std.io.Writer = &stderr_writer.interface;
 
-    var count_devices: usize = 0;
+    var count_ifaces: usize = 0;
     var count_root_hubs: usize = 0;
     var count_hubs: usize = 0;
 
     var deviceTreeRoot: usbTypes.DeviceTree = .{
         .device = .{
             .type = .root,
-            .nameField = "root",
         },
         .node = .{},
     };
@@ -64,8 +63,8 @@ pub fn main() !void {
             dev.type = .hub;
             count_hubs += 1;
         } else {
-            dev.type = .device;
-            count_devices += 1;
+            dev.type = .iface;
+            count_ifaces += 1;
         }
 
         var slice = line0;
@@ -116,7 +115,10 @@ pub fn main() !void {
         slice = skipString(slice, ": Dev ");
         slice = try parseIntUpTo(slice, ',', &dev.dev);
 
-        try dev.calcName(aalloc);
+        if (dev.type == .hub or dev.type == .device) {
+            slice = skipString(slice, ", If ");
+            slice = try parseIntUpTo(slice, ',', &dev.iface);
+        }
 
         // slice = std.mem.trim(u8, slice, " "); // Remove whitespace at start
 
@@ -126,7 +128,7 @@ pub fn main() !void {
 
         // id = slice[0..9];
 
-        // Add to device tree
+        // Add to device 'tree' so that lower items can figure out who their parent is
         hierarchy[depth] = try hierarchy[depth - 1].newDevice(
             aalloc,
             dev,
@@ -146,7 +148,7 @@ pub fn main() !void {
     try graph.print(stdout);
     try stdout.flush();
 
-    try stderr.print("Root hubs = {}, hubs = {}, devices = {}\n", .{ count_root_hubs, count_hubs, count_devices });
+    try stderr.print("Root hubs = {}, hubs = {}, devices = {}\n", .{ count_root_hubs, count_hubs, count_ifaces });
     try stderr.flush();
 }
 
@@ -164,7 +166,7 @@ fn skipString(slice: []const u8, expected: []const u8) []const u8 {
     return slice[expected.len..];
 }
 
-fn parseIntUpTo(slice: []const u8, comptime end: u8, out: *u8) ![]const u8 {
+fn parseIntUpTo(slice: []const u8, comptime end: u8, out: *?u8) ![]const u8 {
     const number_str = std.mem.sliceTo(slice, end);
     out.* = try std.fmt.parseUnsigned(u8, number_str, 10);
     return slice[number_str.len..];

@@ -17,29 +17,24 @@ pub const DeviceType = enum {
     root_hub,
     hub,
     device,
+    iface,
 };
 
 pub const Device = struct {
     type: DeviceType,
 
-    nameField: ?[]const u8 = null,
+    bus: ?u8 = null,
+    port: ?u8 = null,
+    dev: ?u8 = null,
+    iface: ?u8 = null,
 
-    bus: u8 = undefined,
-    port: u8 = undefined,
-    dev: u8 = undefined,
-    iface: u8 = undefined,
-
-    pub fn getName(self: Device) []const u8 {
-        return self.nameField.?;
-    }
-
-    pub fn calcName(self: *Device, alloc: Allocator) !void {
-        self.nameField = switch (self.type) {
-            .root_hub, .hub => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}", .{ self.bus, self.dev }),
-            .device => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n iface {}", .{ self.bus, self.dev, self.port }),
+    pub fn getUniqueName(self: *Device, alloc: Allocator) ![]u8 {
+        return switch (self.type) {
+            .root => try std.fmt.allocPrint(alloc, "Root", .{}),
+            .root_hub, .hub => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}", .{ self.bus.?, self.dev.? }),
+            .device => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n iface {}", .{ self.bus.?, self.dev.?, self.iface.? }),
             else => unreachable,
         };
-        return;
     }
 };
 
@@ -70,7 +65,13 @@ pub const DeviceTree = struct {
         while (nextChildNode) |childNode| {
             const child: *DeviceTree = @fieldParentPtr("node", childNode);
 
-            const newGraphNode = try graph.newNode(child.device.getName());
+            var buf: [100]u8 = undefined;
+            var fixedBufAllocator = std.heap.FixedBufferAllocator.init(&buf);
+            const fballoc = fixedBufAllocator.allocator();
+
+            const name = try child.device.getUniqueName(fballoc);
+
+            const newGraphNode = try graph.newNode(name);
             try graph.newEdge(parentGraphNode, newGraphNode);
 
             if (childNode.child != null) {
