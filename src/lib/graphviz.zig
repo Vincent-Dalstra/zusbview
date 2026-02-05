@@ -19,6 +19,7 @@ pub const Graph = struct {
     // Todo: Use a data structure which can be added to without invalidating existing nodes/edges!
     nodes: std.ArrayList(Node) = .empty,
     edges: std.ArrayList(Edge) = .empty,
+    clusters: std.ArrayList(Cluster) = .empty,
 
     pub fn init(self: *Graph, gpa: Allocator, name: []const u8) !void {
         self.arena = std.heap.ArenaAllocator.init(gpa); // Must use an arena allocator!
@@ -115,6 +116,12 @@ pub const Graph = struct {
     pub const Edge = struct {
         src: *Node,
         dst: *Node,
+    };
+
+    pub const Cluster = struct {
+        name: []const u8,
+
+        nodes: std.ArrayList(Node) = .empty,
     };
 };
 

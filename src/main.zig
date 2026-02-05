@@ -102,7 +102,7 @@ pub fn main() !void {
 
         if (dev.type == .root_hub) {
             slice = skipString(slice, "Bus ");
-            slice = try parseIntUpTo(slice, '.', &dev.bus);
+            slice = try parseIntUpTo(slice, '.', u8, &dev.bus);
             slice = skipString(slice, ".");
 
             // temp
@@ -111,14 +111,23 @@ pub fn main() !void {
         }
 
         slice = skipString(slice, "Port ");
-        slice = try parseIntUpTo(slice, ':', &dev.port);
+        slice = try parseIntUpTo(slice, ':', u8, &dev.port);
         slice = skipString(slice, ": Dev ");
-        slice = try parseIntUpTo(slice, ',', &dev.dev);
+        slice = try parseIntUpTo(slice, ',', u8, &dev.dev);
 
         if (dev.type == .hub or dev.type == .iface) {
             slice = skipString(slice, ", If ");
-            slice = try parseIntUpTo(slice, ',', &dev.iface);
+            slice = try parseIntUpTo(slice, ',', u8, &dev.iface);
         }
+
+        slice = skipString(slice, ", Class=");
+        slice = slice[std.mem.sliceTo(slice, ',').len..]; // ignored, for now
+
+        slice = skipString(slice, ", Driver=");
+        slice = slice[std.mem.sliceTo(slice, ',').len..]; // ignored, for now
+
+        slice = skipString(slice, ", ");
+        slice = try parseIntUpTo(slice, 'M', u32, &dev.speed_mbps);
 
         // slice = std.mem.trim(u8, slice, " "); // Remove whitespace at start
 
@@ -166,8 +175,8 @@ fn skipString(slice: []const u8, expected: []const u8) []const u8 {
     return slice[expected.len..];
 }
 
-fn parseIntUpTo(slice: []const u8, comptime end: u8, out: *?u8) ![]const u8 {
+fn parseIntUpTo(slice: []const u8, comptime end: u8, T: type, out: *?T) ![]const u8 {
     const number_str = std.mem.sliceTo(slice, end);
-    out.* = try std.fmt.parseUnsigned(u8, number_str, 10);
+    out.* = try std.fmt.parseUnsigned(T, number_str, 10);
     return slice[number_str.len..];
 }

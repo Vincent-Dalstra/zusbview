@@ -28,13 +28,15 @@ pub const Device = struct {
     dev: ?u8 = null,
     iface: ?u8 = null,
 
+    speed_mbps: ?u32 = null,
+
     pub fn getUniqueName(self: *Device, alloc: Allocator) ![]u8 {
         return switch (self.type) {
             .root => try std.fmt.allocPrint(alloc, "Root", .{}),
-            .root_hub => try std.fmt.allocPrint(alloc, "ROOT HUB\nBus {}\nDev {}", .{ self.bus.?, self.dev.? }),
-            .hub => try std.fmt.allocPrint(alloc, "HUB\nBus {}\nDev {}", .{ self.bus.?, self.dev.? }),
-            .iface => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n iface {}", .{ self.bus.?, self.dev.?, self.iface.? }),
-            .device => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}", .{ self.bus.?, self.dev.? }),
+            .root_hub => try std.fmt.allocPrint(alloc, "ROOT HUB\nBus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed_mbps.? }),
+            .hub => try std.fmt.allocPrint(alloc, "HUB\nBus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed_mbps.? }),
+            .iface => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n iface {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.iface.?, self.speed_mbps.? }),
+            .device => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed_mbps.? }),
             else => unreachable,
         };
     }
@@ -67,7 +69,7 @@ pub const DeviceTree = struct {
         while (nextChildNode) |childNode| {
             const child: *DeviceTree = @fieldParentPtr("node", childNode);
 
-            var buf: [100]u8 = undefined;
+            var buf: [200]u8 = undefined;
             var fixedBufAllocator = std.heap.FixedBufferAllocator.init(&buf);
             const fballoc = fixedBufAllocator.allocator();
 
