@@ -127,7 +127,7 @@ pub fn main() !void {
         slice = slice[std.mem.sliceTo(slice, ',').len..]; // ignored, for now
 
         slice = skipString(slice, ", ");
-        slice = try parseIntUpTo(slice, 'M', u32, &dev.speed_mbps);
+        slice = try parseUsbSpeed(slice, 'M', &dev.speed);
 
         // slice = std.mem.trim(u8, slice, " "); // Remove whitespace at start
 
@@ -177,6 +177,25 @@ fn skipString(slice: []const u8, expected: []const u8) []const u8 {
 
 fn parseIntUpTo(slice: []const u8, comptime end: u8, T: type, out: *?T) ![]const u8 {
     const number_str = std.mem.sliceTo(slice, end);
-    out.* = try std.fmt.parseUnsigned(T, number_str, 10);
+    out.* = std.fmt.parseUnsigned(T, number_str, 10) catch 1;
     return slice[number_str.len..];
+}
+
+fn parseUsbSpeed(slice: []const u8, comptime end: u8, out: *?usbTypes.Speed) ![]const u8 {
+    const number_str = std.mem.sliceTo(slice, end);
+    const mbps = std.fmt.parseUnsigned(u32, number_str, 10) catch 1;
+
+    out.* = switch (mbps) {
+        1 => .LOW,
+        12 => .FULL,
+        480 => .HIGH,
+        5000 => .SUPER,
+        10000 => .SUPER_PLUS,
+        20000 => .SUPER_PLUS_X2,
+
+        else => unreachable,
+    };
+
+    out.* =
+        return slice[number_str.len..];
 }

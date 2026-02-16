@@ -20,6 +20,24 @@ pub const DeviceType = enum {
     iface,
 };
 
+const kilo = 1000;
+const mega = 1000 * kilo;
+const giga = 1000 * mega;
+
+pub const Speed = enum(u64) {
+    UNKNOWN = 0,
+    LOW = 1.5 * mega,
+    FULL = 12 * mega,
+    HIGH = 480 * mega,
+    SUPER = 5 * giga,
+    SUPER_PLUS = 10 * giga,
+    SUPER_PLUS_X2 = 20 * giga,
+
+    pub fn inMbps(self: Speed) u32 {
+        return @intCast(@intFromEnum(self) / mega);
+    }
+};
+
 pub const Device = struct {
     type: DeviceType,
 
@@ -28,15 +46,15 @@ pub const Device = struct {
     dev: ?u8 = null,
     iface: ?u8 = null,
 
-    speed_mbps: ?u32 = null,
+    speed: ?Speed = null,
 
     pub fn getUniqueName(self: *Device, alloc: Allocator) ![]u8 {
         return switch (self.type) {
             .root => try std.fmt.allocPrint(alloc, "Root", .{}),
-            .root_hub => try std.fmt.allocPrint(alloc, "ROOT HUB\nBus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed_mbps.? }),
-            .hub => try std.fmt.allocPrint(alloc, "HUB\nBus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed_mbps.? }),
-            .iface => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n iface {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.iface.?, self.speed_mbps.? }),
-            .device => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed_mbps.? }),
+            .root_hub => try std.fmt.allocPrint(alloc, "ROOT HUB\nBus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed.?.inMbps() }),
+            .hub => try std.fmt.allocPrint(alloc, "HUB\nBus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed.?.inMbps() }),
+            .iface => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n iface {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.iface.?, self.speed.?.inMbps() }),
+            .device => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed.?.inMbps() }),
             else => unreachable,
         };
     }
