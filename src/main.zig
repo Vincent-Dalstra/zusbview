@@ -41,21 +41,47 @@ pub fn main() !void {
     var stderr_writer = std.fs.File.stderr().writer(stderr_buf);
     const stderr: *std.io.Writer = &stderr_writer.interface;
 
-    const pctx: ProgramContext = .{
+    const program_ctx: ProgramContext = .{
         .alloc = alloc,
         .stdin = stdin,
         .stdout = stdout,
         .stderr = stderr,
     };
 
-    try program(pctx);
+    // try program(program_ctx);
+    try program2(program_ctx);
 
     try stdout.flush();
     try stderr.flush();
 }
 
+const SYSFS_USB_PATH = "/sys/bus/usb/devices";
+
+pub fn program2(ctx: ProgramContext) !void {
+    // Unpack
+    // const alloc = ctx.alloc;
+    const stdout = ctx.stdout;
+
+    //
+
+    var dir = try std.fs.openDirAbsolute(SYSFS_USB_PATH, .{ .iterate = true });
+    defer dir.close();
+
+    var it = dir.iterateAssumeFirstIteration();
+
+    while (try it.next()) |entry| {
+        try stdout.print("{s}\n", .{entry.name});
+    }
+
+    try stdout.flush();
+
+    //
+}
+
 pub fn program(ctx: ProgramContext) !void {
-    // Memory
+    // Unpack
+
+    // Memory for graphs is free'd in one go
     var arena = std.heap.ArenaAllocator.init(ctx.alloc);
     defer arena.deinit();
     const aalloc = arena.allocator();
