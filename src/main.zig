@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
 const zusbview = @import("zusbview");
@@ -7,23 +8,57 @@ const graphviz = zusbview.graphviz;
 
 const usb_max_tiers = usbTypes.usb_max_tiers;
 
+const ProgramContext = struct {
+    /// Core allocator used by program
+    alloc: Allocator,
+
+    stdin: *std.io.Reader,
+    stdout: *std.io.Writer,
+    stderr: *std.io.Writer,
+};
+
 pub fn main() !void {
-    // Memory
+    // memory
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var aalloc = arena.allocator();
+    const alloc = arena.allocator();
+    // var debugAllocator: std.heap.DebugAllocator(.{}) = .init;
+    // defer assert(debugAllocator.deinit() == .ok); // Check for leaks
+    // const alloc: Allocator = debugAllocator.allocator();
 
-    const stdin_buf: []u8 = try aalloc.alloc(u8, (16 * 1024));
+    const stdin_buf: []u8 = try alloc.alloc(u8, (16 * 1024));
+    defer alloc.free(stdin_buf);
     var stdin_reader = std.fs.File.stdin().reader(stdin_buf);
     const stdin: *std.io.Reader = &stdin_reader.interface;
 
-    const stdout_buf: []u8 = try aalloc.alloc(u8, (16 * 1024));
+    const stdout_buf: []u8 = try alloc.alloc(u8, (16 * 1024));
+    defer alloc.free(stdout_buf);
     var stdout_writer = std.fs.File.stdout().writer(stdout_buf);
     const stdout: *std.io.Writer = &stdout_writer.interface;
 
-    const stderr_buf: []u8 = try aalloc.alloc(u8, (16 * 1024));
+    const stderr_buf: []u8 = try alloc.alloc(u8, (16 * 1024));
+    defer alloc.free(stderr_buf);
     var stderr_writer = std.fs.File.stderr().writer(stderr_buf);
     const stderr: *std.io.Writer = &stderr_writer.interface;
+
+    const pctx: ProgramContext = .{
+        .alloc = alloc,
+        .stdin = stdin,
+        .stdout = stdout,
+        .stderr = stderr,
+    };
+
+    try program(pctx);
+
+    try stdout.flush();
+    try stderr.flush();
+}
+
+pub fn program(ctx: ProgramContext) !void {
+    // Memory
+    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer arena.deinit();
+    const aalloc = arena.allocator();
 
     var count_devices: usize = 0;
     var count_root_hubs: usize = 0;
@@ -47,9 +82,9 @@ pub fn main() !void {
 
         var depth: u8 = 1;
 
-        const bare_line0 = try stdin.takeDelimiter('\n') orelse break;
+        const bare_line0 = try ctx.stdin.takeDelimiter('\n') orelse break;
         const line0 = std.mem.trim(u8, bare_line0, "\r");
-        const bare_line1 = try stdin.takeDelimiter('\n') orelse break;
+        const bare_line1 = try ctx.stdin.takeDelimiter('\n') orelse break;
         const line1 = std.mem.trim(u8, bare_line1, "\r");
         _ = line1;
 
@@ -154,11 +189,11 @@ pub fn main() !void {
 
     try deviceTreeRoot.exportDot(&graph);
 
-    try graph.print(stdout);
-    try stdout.flush();
+    try graph.print(ctx.stdout);
+    try ctx.stdout.flush();
 
-    try stderr.print("Root hubs = {}, hubs = {}, devices = {}\n", .{ count_root_hubs, count_hubs, count_devices });
-    try stderr.flush();
+    try ctx.stderr.print("Root hubs = {}, hubs = {}, devices = {}\n", .{ count_root_hubs, count_hubs, count_devices });
+    try ctx.stderr.flush();
 }
 
 fn grabLine(reader: *std.io.Reader) ?[]u8 {
