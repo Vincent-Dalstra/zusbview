@@ -59,20 +59,38 @@ const SYSFS_USB_PATH = "/sys/bus/usb/devices";
 
 pub fn program2(ctx: ProgramContext) !void {
     // Unpack
-    // const alloc = ctx.alloc;
+    const alloc = ctx.alloc;
     const stdout = ctx.stdout;
 
     //
 
-    var dir = try std.fs.openDirAbsolute(SYSFS_USB_PATH, .{ .iterate = true });
-    defer dir.close();
+    var usb_dir = try std.fs.openDirAbsolute(SYSFS_USB_PATH, .{ .iterate = true });
+    defer usb_dir.close();
 
-    var it = dir.iterateAssumeFirstIteration();
+    var usb_dir_it = usb_dir.iterateAssumeFirstIteration();
+    while (try usb_dir_it.next()) |entry| {
+        try stdout.print("{s} {any}\n", .{ entry.name, entry.kind });
+        if (entry.kind == .sym_link) {
+            if (std.mem.eql(u8, entry.name[0..3], "usb")) {
+                var dev_dir = try usb_dir.openDir(entry.name, .{ .iterate = true });
+                defer dev_dir.close();
 
-    while (try it.next()) |entry| {
-        try stdout.print("{s}\n", .{entry.name});
+                var dev_dir_it = dev_dir.iterateAssumeFirstIteration();
+                while (try dev_dir_it.next()) |entry2| {
+                    try stdout.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
+                    if (entry2.kind == .file) {
+                        const data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
+                            try stdout.print("    {any}\n", .{err});
+                            continue;
+                        };
+                        defer alloc.free(data);
+
+                        try stdout.print("    {s}", .{data});
+                    }
+                }
+            }
+        }
     }
-
     try stdout.flush();
 
     //
