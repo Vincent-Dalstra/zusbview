@@ -16,8 +16,9 @@ pub const DeviceType = enum {
     not_recognised,
     root_hub,
     hub,
-    device,
-    iface,
+    // device,
+    // iface,
+    endpoint,
 };
 
 const kilo = 1000;
@@ -38,27 +39,136 @@ pub const Speed = enum(u64) {
     }
 };
 
+pub const DevicePosition = struct {
+    bus: u8,
+    ports: ?[]u8 = null,
+    iface: ?u8 = null,
+    endpoint: ?u8 = null,
+
+    // memory for 'ports' to use
+    port_buffer: [7]u8 = undefined,
+};
+
 pub const Device = struct {
     type: DeviceType,
 
-    bus: ?u8 = null,
-    port: ?u8 = null,
-    dev: ?u8 = null,
-    iface: ?u8 = null,
+    bus: u8 = undefined,
+    // See fn ports(), which returns these two as a slice for convenience
+    ports_buffer: [7]u8 = undefined,
+    ports_len: usize = 0,
+    dev: u8 = undefined,
+
+    iface: u8 = undefined,
+    endpoint: u8 = undefined,
 
     speed: ?Speed = null,
 
-    pub fn getUniqueName(self: *Device, alloc: Allocator) ![]u8 {
-        return switch (self.type) {
-            .root => try std.fmt.allocPrint(alloc, "Root", .{}),
-            .root_hub => try std.fmt.allocPrint(alloc, "ROOT HUB\nBus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed.?.inMbps() }),
-            .hub => try std.fmt.allocPrint(alloc, "HUB\nBus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed.?.inMbps() }),
-            .iface => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n iface {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.iface.?, self.speed.?.inMbps() }),
-            .device => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed.?.inMbps() }),
-            else => unreachable,
-        };
+    /// Deprecated
+    // pub fn getUniqueName(self: *Device, alloc: Allocator) ![]u8 {
+    //     return switch (self.type) {
+    //         .root => try std.fmt.allocPrint(alloc, "Root", .{}),
+    //         .root_hub => try std.fmt.allocPrint(alloc, "ROOT HUB\nBus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed.?.inMbps() }),
+    //         .hub => try std.fmt.allocPrint(alloc, "HUB\nBus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed.?.inMbps() }),
+    //         .iface => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n iface {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.iface.?, self.speed.?.inMbps() }),
+    //         .device => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed.?.inMbps() }),
+    //         else => unreachable,
+    //     };
+    // }
+
+    pub fn ports(self: *const Device) []const u8 {
+        return self.ports_buffer[0..self.ports_len];
+    }
+
+    /// Creates the same names as found in  '/sys/bus/usb/devices'
+    pub fn format(self: Device, writer: *std.io.Writer) !void {
+        if (self.type == .root_hub) {
+            try writer.print("usb{}", .{self.bus});
+            return;
+        }
+
+        // Bus and first port always exist, separated by a '-'
+        try writer.print("{}", .{self.bus});
+        try writer.print("-{}", .{self.ports()[0]});
+
+        for (self.ports()[1..]) |p| {
+            try writer.print(".{}", .{p});
+        }
+
+        if (self.type == .hub) {
+            return;
+        }
+
+        if (self.type == .endpoint) {
+            try writer.print(":{}.{}", .{ self.iface, self.endpoint });
+        }
+    }
+
+    pub fn fromStr(str: []const u8) !Device {
+        var dev: Device = undefined;
+        if (std.mem.eql(u8, str[0..3], "usb")) {
+            dev.type = .root_hub;
+            dev.bus = try std.fmt.parseInt(u8, str[3..], 10);
+            return dev;
+        } else {
+            const pre_semicolon = std.mem.sliceTo(str, ':');
+
+            {
+                var slice = pre_semicolon;
+
+                // Always starts with bus number
+                slice = try parseIntUpTo(slice, '-', u8, &dev.bus);
+                slice = skipString(slice, "-").?;
+
+                var depth: u8 = 0;
+                slice = try parseIntUpTo(slice, '.', u8, &dev.ports_buffer[depth]);
+                depth += 1;
+                while (true) {
+                    slice = skipString(slice, ".") orelse break;
+                    slice = try parseIntUpTo(slice, '.', u8, &dev.ports_buffer[depth]);
+                    depth += 1;
+                }
+                dev.ports_len = depth;
+                // std.debug.print("dev.ports={any}\n", .{dev.ports()});
+            }
+
+            if (pre_semicolon.len == str.len) {
+                // There was no semicolon
+                dev.type = .hub;
+            } else {
+                dev.type = .endpoint;
+
+                const post_semicolon = str[(pre_semicolon.len + 1)..];
+                assert(post_semicolon.len >= 3);
+
+                var slice = post_semicolon;
+
+                slice = try parseIntUpTo(slice, '.', u8, &dev.iface);
+                slice = skipString(slice, ".").?;
+                slice = try parseIntUpTo(slice, 0, u8, &dev.endpoint);
+
+                assert(slice.len == 0);
+            }
+            return dev;
+        }
     }
 };
+
+fn skipString(slice: []const u8, expected: []const u8) ?[]const u8 {
+    if (slice.len < expected.len) return null;
+
+    if (std.mem.eql(u8, expected, slice[0..expected.len])) {
+        return slice[expected.len..];
+    } else {
+        return null;
+    }
+}
+
+fn parseIntUpTo(slice: []const u8, comptime end: u8, T: type, out: *T) ![]const u8 {
+    const number_str = std.mem.sliceTo(slice, end);
+    // std.debug.print("number_Str='{s}'\n", .{number_str});
+    out.* = try std.fmt.parseUnsigned(T, number_str, 10);
+    return slice[number_str.len..];
+}
 
 pub const DeviceTree = struct {
     node: LinkedTree.Node = .{},

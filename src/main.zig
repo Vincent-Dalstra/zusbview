@@ -69,15 +69,29 @@ pub fn program2(ctx: ProgramContext) !void {
 
     var usb_dir_it = usb_dir.iterateAssumeFirstIteration();
     while (try usb_dir_it.next()) |entry| {
-        try stdout.print("{s} {any}\n", .{ entry.name, entry.kind });
+        try stdout.print("Next entry: {s}/{s} {any}\n", .{ SYSFS_USB_PATH, entry.name, entry.kind });
+        try stdout.flush();
         if (entry.kind == .sym_link) {
-            if (std.mem.eql(u8, entry.name[0..3], "usb")) {
-                var dev_dir = try usb_dir.openDir(entry.name, .{ .iterate = true });
-                defer dev_dir.close();
+            const dev: usbTypes.Device = try .fromStr(entry.name);
 
-                var dev_dir_it = dev_dir.iterateAssumeFirstIteration();
-                while (try dev_dir_it.next()) |entry2| {
-                    try stdout.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
+            // std.debug.print("bus={}\n", .{dev.bus});
+            if (dev.type != .root_hub) {
+                // std.debug.print("ports={any}\n", .{dev.ports()});
+            }
+
+            // Check that it converts back to the same string
+            const dev_str = try std.fmt.allocPrint(alloc, "{f}", .{dev});
+            defer alloc.free(dev_str);
+            assert(std.mem.eql(u8, entry.name, dev_str));
+
+            // Open the directory representing the device
+            var dev_dir = try usb_dir.openDir(entry.name, .{ .iterate = true });
+            defer dev_dir.close();
+
+            var dev_dir_it = dev_dir.iterateAssumeFirstIteration();
+            while (try dev_dir_it.next()) |entry2| {
+                if (std.mem.eql(u8, "speed", entry2.name)) {
+                    std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
                     if (entry2.kind == .file) {
                         const data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
                             try stdout.print("    {any}\n", .{err});
