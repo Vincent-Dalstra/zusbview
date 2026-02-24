@@ -39,16 +39,6 @@ pub const Speed = enum(u64) {
     }
 };
 
-pub const DevicePosition = struct {
-    bus: u8,
-    ports: ?[]u8 = null,
-    iface: ?u8 = null,
-    endpoint: ?u8 = null,
-
-    // memory for 'ports' to use
-    port_buffer: [7]u8 = undefined,
-};
-
 pub const Device = struct {
     type: DeviceType,
 
@@ -56,24 +46,11 @@ pub const Device = struct {
     // See fn ports(), which returns these two as a slice for convenience
     ports_buffer: [7]u8 = undefined,
     ports_len: usize = 0,
-    dev: u8 = undefined,
 
     iface: u8 = undefined,
     endpoint: u8 = undefined,
 
     speed: ?Speed = null,
-
-    /// Deprecated
-    // pub fn getUniqueName(self: *Device, alloc: Allocator) ![]u8 {
-    //     return switch (self.type) {
-    //         .root => try std.fmt.allocPrint(alloc, "Root", .{}),
-    //         .root_hub => try std.fmt.allocPrint(alloc, "ROOT HUB\nBus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed.?.inMbps() }),
-    //         .hub => try std.fmt.allocPrint(alloc, "HUB\nBus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed.?.inMbps() }),
-    //         .iface => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n iface {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.iface.?, self.speed.?.inMbps() }),
-    //         .device => try std.fmt.allocPrint(alloc, "Bus {}\nDev {}\n{} Mbps", .{ self.bus.?, self.dev.?, self.speed.?.inMbps() }),
-    //         else => unreachable,
-    //     };
-    // }
 
     pub fn ports(self: *const Device) []const u8 {
         return self.ports_buffer[0..self.ports_len];
