@@ -72,7 +72,7 @@ pub fn program2(ctx: ProgramContext) !void {
         try stdout.print("Next entry: {s}/{s} {any}\n", .{ SYSFS_USB_PATH, entry.name, entry.kind });
         try stdout.flush();
         if (entry.kind == .sym_link) {
-            const dev: usbTypes.Device = try .fromStr(entry.name);
+            const dev: usbTypes.HubOrEndPointIdentifier = try .fromStr(entry.name);
 
             // std.debug.print("bus={}\n", .{dev.bus});
             if (dev.type != .root_hub) {

@@ -25,7 +25,7 @@ const kilo = 1000;
 const mega = 1000 * kilo;
 const giga = 1000 * mega;
 
-pub const Speed = enum(u64) {
+pub const SpeedClass = enum(u64) {
     UNKNOWN = 0,
     LOW = 1.5 * mega,
     FULL = 12 * mega,
@@ -34,12 +34,12 @@ pub const Speed = enum(u64) {
     SUPER_PLUS = 10 * giga,
     SUPER_PLUS_X2 = 20 * giga,
 
-    pub fn inMbps(self: Speed) u32 {
+    pub fn inMbps(self: SpeedClass) u32 {
         return @intCast(@intFromEnum(self) / mega);
     }
 };
 
-pub const Device = struct {
+pub const HubOrEndPointIdentifier = struct {
     type: DeviceType,
 
     bus: u8 = undefined,
@@ -50,14 +50,12 @@ pub const Device = struct {
     iface: u8 = undefined,
     endpoint: u8 = undefined,
 
-    speed: ?Speed = null,
-
-    pub fn ports(self: *const Device) []const u8 {
+    pub fn ports(self: *const HubOrEndPointIdentifier) []const u8 {
         return self.ports_buffer[0..self.ports_len];
     }
 
     /// Creates the same names as found in  '/sys/bus/usb/devices'
-    pub fn format(self: Device, writer: *std.io.Writer) !void {
+    pub fn format(self: HubOrEndPointIdentifier, writer: *std.io.Writer) !void {
         if (self.type == .root_hub) {
             try writer.print("usb{}", .{self.bus});
             return;
@@ -80,8 +78,8 @@ pub const Device = struct {
         }
     }
 
-    pub fn fromStr(str: []const u8) !Device {
-        var dev: Device = undefined;
+    pub fn fromStr(str: []const u8) !HubOrEndPointIdentifier {
+        var dev: HubOrEndPointIdentifier = undefined;
         if (std.mem.eql(u8, str[0..3], "usb")) {
             dev.type = .root_hub;
             dev.bus = try std.fmt.parseInt(u8, str[3..], 10);
@@ -150,9 +148,9 @@ fn parseIntUpTo(slice: []const u8, comptime end: u8, T: type, out: *T) ![]const 
 pub const DeviceTree = struct {
     node: LinkedTree.Node = .{},
 
-    device: Device,
+    device: HubOrEndPointIdentifier,
 
-    pub fn newDevice(self: *DeviceTree, arena: Allocator, new: Device) !*DeviceTree {
+    pub fn newDevice(self: *DeviceTree, arena: Allocator, new: HubOrEndPointIdentifier) !*DeviceTree {
         const newNode = try arena.create(DeviceTree);
         newNode.* = .{
             .node = .{},
