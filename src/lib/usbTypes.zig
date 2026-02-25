@@ -33,9 +33,15 @@ pub const SpeedClass = enum(u64) {
     SUPER = 5 * giga,
     SUPER_PLUS = 10 * giga,
     SUPER_PLUS_X2 = 20 * giga,
+    _,
 
     pub fn inMbps(self: SpeedClass) u32 {
         return @intCast(@intFromEnum(self) / mega);
+    }
+    pub fn fromStringMbps(str: []const u8) !SpeedClass {
+        if (str.len == 0) return .UNKNOWN;
+        const mbps = try std.fmt.parseUnsigned(u16, str, 10);
+        return @enumFromInt(mbps); // Todo: Use inline for switch trick, error if not a known speed
     }
 };
 

@@ -74,6 +74,8 @@ pub fn program2(ctx: ProgramContext) !void {
         if (entry.kind == .sym_link) {
             const dev: usbTypes.HubOrEndPointIdentifier = try .fromStr(entry.name);
 
+            // var speed: ?usbTypes.SpeedClass = null;
+
             // std.debug.print("bus={}\n", .{dev.bus});
             if (dev.type != .root_hub) {
                 // std.debug.print("ports={any}\n", .{dev.ports()});
