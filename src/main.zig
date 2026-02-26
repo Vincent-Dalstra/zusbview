@@ -62,10 +62,26 @@ pub fn program2(ctx: ProgramContext) !void {
     const alloc = ctx.alloc;
     const stdout = ctx.stdout;
 
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    // const aalloc = arena.allocator();
+
+    var device_pool: std.heap.MemoryPool(usbTypes.Device) = try .initPreheated(alloc, 100);
+    defer device_pool.deinit();
+    var root_hub_pool: std.heap.MemoryPool(usbTypes.RootHub) = try .initPreheated(alloc, 10);
+    defer root_hub_pool.deinit();
+
+    // // Create a device, which will be copied into the ArrayList once it's done & validated
+    // var dev: *usbTypes.Device = try device_pool.create();
+    // dev.* = .{
+    //     .id = try .fromStr(entry.name), // We can fill this one in right away
+    //     .speed = null,
+    // };
+
     //
-    var root_hubs: std.ArrayList(usbTypes.Device) = .empty;
-    var hubs: std.ArrayList(usbTypes.Device) = .empty;
-    var endpoints: std.ArrayList(usbTypes.Device) = .empty;
+    var root_hubs: std.ArrayList(*usbTypes.RootHub) = .empty;
+    var hubs: std.ArrayList(*usbTypes.Device) = .empty;
+    var endpoints: std.ArrayList(*usbTypes.Device) = .empty;
 
     var usb_dir = try std.fs.openDirAbsolute(SYSFS_USB_PATH, .{ .iterate = true });
     defer usb_dir.close();
@@ -74,20 +90,16 @@ pub fn program2(ctx: ProgramContext) !void {
     while (try usb_dir_it.next()) |entry| {
         try stdout.print("Next entry: {s}/{s} {any}\n", .{ SYSFS_USB_PATH, entry.name, entry.kind });
         try stdout.flush();
-        if (entry.kind == .sym_link) {
-            // Create a device, which will be copied into the ArrayList once it's done & validated
-            var dev: usbTypes.Device = .{
-                .id = try .fromStr(entry.name), // We can fill this one in right away
-                .speed = null,
-            };
 
-            // std.debug.print("bus={}\n", .{dev.bus});
-            if (dev.id.type != .root_hub) {
-                // std.debug.print("ports={any}\n", .{dev.ports()});
-            }
+        var id: usbTypes.HubOrEndPointIdentifier = undefined;
+        var speed: ?usbTypes.SpeedClass = null;
+        var serial: usbTypes.PciBdfNumber = .{ .str = undefined };
+
+        if (entry.kind == .sym_link) {
+            id = try .fromStr(entry.name);
 
             // Check that it converts back to the same string
-            const dev_str = try std.fmt.allocPrint(alloc, "{f}", .{dev.id});
+            const dev_str = try std.fmt.allocPrint(alloc, "{f}", .{id});
             defer alloc.free(dev_str);
             assert(std.mem.eql(u8, entry.name, dev_str));
 
@@ -110,11 +122,11 @@ pub fn program2(ctx: ProgramContext) !void {
                     // On linux at least, this file ends with a newline, and parseInt() doesn't like that
                     const data = std.mem.trimEnd(u8, raw_data, "\r\n");
 
-                    dev.speed = try .fromStringMbps(data);
-                    std.debug.print("speed = {}\n", .{dev.speed.?.inMbps()});
+                    speed = try .fromStringMbps(data);
+                    std.debug.print("speed = {}\n", .{speed.?.inMbps()});
                 } else if (std.mem.eql(u8, "serial", entry2.name)) {
                     std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
-                    if (dev.id.type == .root_hub) {
+                    if (id.type == .root_hub) {
                         assert(entry2.kind == .file);
 
                         const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
@@ -128,25 +140,47 @@ pub fn program2(ctx: ProgramContext) !void {
 
                         std.debug.print("{s}\n", .{data});
                         std.debug.print("0x{x}\n", .{data});
+
+                        @memcpy(&serial.str, data);
                     }
                 }
             }
-            try switch (dev.id.type) {
-                .root_hub => root_hubs.append(alloc, dev),
-                .hub => hubs.append(alloc, dev),
-                .endpoint => endpoints.append(alloc, dev),
-                else => unreachable,
-            };
+
+            if (id.type == .root_hub) {
+                const root_hub: *usbTypes.RootHub = try root_hub_pool.create();
+                root_hub.* = .{
+                    .id = id,
+                    .speed = speed,
+                    .serial = serial,
+                };
+                try root_hubs.append(alloc, root_hub);
+            } else {
+                // if (id.type)
+                const device: *usbTypes.Device = try device_pool.create();
+                device.* = .{
+                    .id = id,
+                    .speed = speed,
+                };
+                try switch (id.type) {
+                    .hub => hubs.append(alloc, device),
+                    .endpoint => endpoints.append(alloc, device),
+                    else => unreachable,
+                };
+            }
         }
     }
 
     for (root_hubs.items) |root_hub| {
-        try stdout.print("{f}\n", .{root_hub.id});
+        try stdout.print("{f}: {s}\n", .{ root_hub.id, root_hub.serial.?.str });
     }
+    try stdout.flush();
 
-    inline for (std.meta.fields(usbTypes.SpeedClass), 0..) |speed_field, i| {
-        try stdout.print("======== {s} Mbps ========\n", .{speed_field.name});
-        const speed: usbTypes.SpeedClass = @enumFromInt(i);
+    for (std.enums.values(usbTypes.SpeedClass)) |speed| {
+        if (speed == .UNKNOWN) {
+            try stdout.print("======== Unknown speed ========\n", .{});
+            continue;
+        }
+        try stdout.print("======== {} Mbps ========\n", .{speed.inMbps()});
 
         for (hubs.items) |hub| {
             if (hub.speed == speed) {
@@ -154,13 +188,12 @@ pub fn program2(ctx: ProgramContext) !void {
             }
         }
 
-        for (endpoints.items) |dev| {
-            if (dev.speed == speed) {
-                try stdout.print("{f}\n", .{dev.id});
+        for (endpoints.items) |ep| {
+            if (ep.speed == speed) {
+                try stdout.print("{f}\n", .{ep.id});
             }
         }
     }
-
     try stdout.flush();
 
     //

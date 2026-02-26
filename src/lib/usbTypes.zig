@@ -21,9 +21,22 @@ pub const DeviceType = enum {
     endpoint,
 };
 
-const kilo = 1000;
-const mega = 1000 * kilo;
-const giga = 1000 * mega;
+pub const PciBdfNumber = struct {
+    // bus: u8,
+    // device: u5,
+    // function: u3,
+    str: [12]u8, // 0000:00:0
+
+    pub fn eql(a: PciBdfNumber, b: PciBdfNumber) bool {
+        return std.mem.eql(u8, a, b);
+    }
+};
+
+pub const RootHub = struct {
+    id: HubOrEndPointIdentifier,
+    speed: ?SpeedClass,
+    serial: ?PciBdfNumber,
+};
 
 pub const Device = struct {
     id: HubOrEndPointIdentifier,
