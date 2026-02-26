@@ -25,23 +25,44 @@ const kilo = 1000;
 const mega = 1000 * kilo;
 const giga = 1000 * mega;
 
-pub const SpeedClass = enum(u32) {
-    // UNKNOWN = 0,
-    LOW = 1, // Actually 1.5 Mbps, but this is a common convention
-    FULL = 12,
-    HIGH = 480,
-    SUPER = 5 * 1000,
-    SUPER_PLUS = 10 * 1000,
-    SUPER_PLUS_X2 = 20 * 1000,
-    _,
+pub const Device = struct {
+    id: HubOrEndPointIdentifier,
+    speed: ?SpeedClass,
+};
+
+// Value-compatible with libusb
+pub const SpeedClass = enum(c_int) {
+    UNKNOWN = 0, // For compatability; try to use null's and optionals instead
+    LOW = 1,
+    FULL = 2,
+    HIGH = 3,
+    SUPER = 4,
+    SUPER_PLUS = 5,
+    SUPER_PLUS_X2 = 6,
 
     pub fn inMbps(self: SpeedClass) u32 {
-        return @intCast(@intFromEnum(self));
+        return switch (self) {
+            .LOW => 1, // Actually 1.5 Mbps, but general convention is to represent it as '1'
+            .FULL => 12,
+            .HIGH => 480,
+            .SUPER => 5 * 1000,
+            .SUPER_PLUS => 10 * 1000,
+            .SUPER_PLUS_X2 => 20 * 1000,
+            else => unreachable,
+        };
     }
     pub fn fromStringMbps(str: []const u8) !?SpeedClass {
         if (str.len == 0) return null;
         const mbps = try std.fmt.parseUnsigned(u32, str, 10);
-        return @enumFromInt(mbps); // Todo: Use inline for switch trick, error if not a known speed
+        return switch (mbps) {
+            1 => .LOW,
+            12 => .FULL,
+            480 => .HIGH,
+            5 * 1000 => .SUPER,
+            10 * 1000 => .SUPER_PLUS,
+            20 * 1000 => .SUPER_PLUS_X2,
+            else => null,
+        };
     }
 };
 
