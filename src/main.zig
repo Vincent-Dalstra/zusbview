@@ -94,9 +94,26 @@ pub fn program2(ctx: ProgramContext) !void {
             while (try dev_dir_it.next()) |entry2| {
                 if (std.mem.eql(u8, "speed", entry2.name)) {
                     std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
-                    if (entry2.kind == .file) {
+                    assert(entry2.kind == .file);
+
+                    const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
+                        std.debug.print("{any}\n", .{err});
+                        continue;
+                    };
+                    defer alloc.free(raw_data);
+
+                    // On linux at least, this file ends with a newline, and parseInt() doesn't like that
+                    const data = std.mem.trimEnd(u8, raw_data, "\r\n");
+
+                    speed = try .fromStringMbps(data);
+                    std.debug.print("speed = {}\n", .{speed.?.inMbps()});
+                } else if (std.mem.eql(u8, "serial", entry2.name)) {
+                    std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
+                    if (dev.type == .root_hub) {
+                        assert(entry2.kind == .file);
+
                         const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
-                            std.debug.print("    {any}\n", .{err});
+                            std.debug.print("{any}\n", .{err});
                             continue;
                         };
                         defer alloc.free(raw_data);
@@ -104,10 +121,8 @@ pub fn program2(ctx: ProgramContext) !void {
                         // On linux at least, this file ends with a newline, and parseInt() doesn't like that
                         const data = std.mem.trimEnd(u8, raw_data, "\r\n");
 
-                        speed = try .fromStringMbps(data);
-                        std.debug.print("speed = {}\n", .{speed.?.inMbps()});
-                    } else {
-                        unreachable;
+                        std.debug.print("{s}\n", .{data});
+                        std.debug.print("0x{x}\n", .{data});
                     }
                 }
             }
