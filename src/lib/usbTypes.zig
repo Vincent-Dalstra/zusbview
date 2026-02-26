@@ -25,22 +25,22 @@ const kilo = 1000;
 const mega = 1000 * kilo;
 const giga = 1000 * mega;
 
-pub const SpeedClass = enum(u64) {
-    UNKNOWN = 0,
-    LOW = 1.5 * mega,
-    FULL = 12 * mega,
-    HIGH = 480 * mega,
-    SUPER = 5 * giga,
-    SUPER_PLUS = 10 * giga,
-    SUPER_PLUS_X2 = 20 * giga,
+pub const SpeedClass = enum(u32) {
+    // UNKNOWN = 0,
+    LOW = 1, // Actually 1.5 Mbps, but this is a common convention
+    FULL = 12,
+    HIGH = 480,
+    SUPER = 5 * 1000,
+    SUPER_PLUS = 10 * 1000,
+    SUPER_PLUS_X2 = 20 * 1000,
     _,
 
     pub fn inMbps(self: SpeedClass) u32 {
-        return @intCast(@intFromEnum(self) / mega);
+        return @intCast(@intFromEnum(self));
     }
-    pub fn fromStringMbps(str: []const u8) !SpeedClass {
-        if (str.len == 0) return .UNKNOWN;
-        const mbps = try std.fmt.parseUnsigned(u16, str, 10);
+    pub fn fromStringMbps(str: []const u8) !?SpeedClass {
+        if (str.len == 0) return null;
+        const mbps = try std.fmt.parseUnsigned(u32, str, 10);
         return @enumFromInt(mbps); // Todo: Use inline for switch trick, error if not a known speed
     }
 };

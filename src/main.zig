@@ -74,7 +74,7 @@ pub fn program2(ctx: ProgramContext) !void {
         if (entry.kind == .sym_link) {
             const dev: usbTypes.HubOrEndPointIdentifier = try .fromStr(entry.name);
 
-            // var speed: ?usbTypes.SpeedClass = null;
+            var speed: ?usbTypes.SpeedClass = null;
 
             // std.debug.print("bus={}\n", .{dev.bus});
             if (dev.type != .root_hub) {
@@ -95,13 +95,19 @@ pub fn program2(ctx: ProgramContext) !void {
                 if (std.mem.eql(u8, "speed", entry2.name)) {
                     std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
                     if (entry2.kind == .file) {
-                        const data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
-                            try stdout.print("    {any}\n", .{err});
+                        const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
+                            std.debug.print("    {any}\n", .{err});
                             continue;
                         };
-                        defer alloc.free(data);
+                        defer alloc.free(raw_data);
 
-                        try stdout.print("    {s}", .{data});
+                        // On linux at least, this file ends with a newline, and parseInt() doesn't like that
+                        const data = std.mem.trimEnd(u8, raw_data, "\r\n");
+
+                        speed = try .fromStringMbps(data);
+                        std.debug.print("speed = {}\n", .{speed.?.inMbps()});
+                    } else {
+                        unreachable;
                     }
                 }
             }
