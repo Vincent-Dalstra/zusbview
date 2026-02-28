@@ -80,11 +80,11 @@ pub const SpeedClass = enum(c_int) {
 };
 
 pub const HubOrEndPointIdentifier = struct {
-    type: DeviceType,
+    type: DeviceType = undefined,
 
     bus: u8 = undefined,
     // See fn ports(), which returns these two as a slice for convenience
-    ports_buffer: [7]u8 = undefined,
+    ports_buffer: [7]u8 = [_]u8{0} ** 7,
     ports_len: usize = 0,
 
     iface: u8 = undefined,
@@ -119,7 +119,7 @@ pub const HubOrEndPointIdentifier = struct {
     }
 
     pub fn fromStr(str: []const u8) !HubOrEndPointIdentifier {
-        var dev: HubOrEndPointIdentifier = undefined;
+        var dev: HubOrEndPointIdentifier = .{};
         if (std.mem.eql(u8, str[0..3], "usb")) {
             dev.type = .root_hub;
             dev.bus = try std.fmt.parseInt(u8, str[3..], 10);

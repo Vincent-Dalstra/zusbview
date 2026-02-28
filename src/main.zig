@@ -71,6 +71,9 @@ pub fn program2(ctx: ProgramContext) !void {
     var root_hub_pool: std.heap.MemoryPool(usbTypes.RootHub) = try .initPreheated(alloc, 10);
     defer root_hub_pool.deinit();
 
+    var device_map: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbTypes.Device) = .init(alloc);
+    defer device_map.deinit();
+
     // // Create a device, which will be copied into the ArrayList once it's done & validated
     // var dev: *usbTypes.Device = try device_pool.create();
     // dev.* = .{
@@ -166,6 +169,9 @@ pub fn program2(ctx: ProgramContext) !void {
                     .endpoint => endpoints.append(alloc, device),
                     else => unreachable,
                 };
+
+                const fetch = try device_map.fetchPut(id, device);
+                assert(fetch == null); // No two USB devices should have the same name
             }
         }
     }
@@ -195,6 +201,15 @@ pub fn program2(ctx: ProgramContext) !void {
         }
     }
     try stdout.flush();
+
+    const val = device_map.get(.{
+        .type = .hub,
+        .bus = 2,
+        .ports_buffer = .{ 1, 0, 0, 0, 0, 0, 0 },
+        .ports_len = 1,
+    });
+
+    std.debug.print("{any}\n", .{val.?.speed});
 
     //
 }
