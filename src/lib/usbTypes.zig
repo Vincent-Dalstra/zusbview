@@ -168,23 +168,6 @@ pub const HubOrEndPointIdentifier = struct {
     }
 };
 
-fn skipString(slice: []const u8, expected: []const u8) ?[]const u8 {
-    if (slice.len < expected.len) return null;
-
-    if (std.mem.eql(u8, expected, slice[0..expected.len])) {
-        return slice[expected.len..];
-    } else {
-        return null;
-    }
-}
-
-fn parseIntUpTo(slice: []const u8, comptime end: u8, T: type, out: *T) ![]const u8 {
-    const number_str = std.mem.sliceTo(slice, end);
-    // std.debug.print("number_Str='{s}'\n", .{number_str});
-    out.* = try std.fmt.parseUnsigned(T, number_str, 10);
-    return slice[number_str.len..];
-}
-
 pub const DeviceTree = struct {
     node: LinkedTree.Node = .{},
 
@@ -250,3 +233,20 @@ pub const DeviceTree = struct {
         }
     }
 };
+
+fn skipString(slice: []const u8, expected: []const u8) ?[]const u8 {
+    if (slice.len < expected.len) return null;
+
+    if (std.mem.eql(u8, expected, slice[0..expected.len])) {
+        return slice[expected.len..];
+    } else {
+        return null;
+    }
+}
+
+fn parseIntUpTo(slice: []const u8, comptime end: u8, T: type, out: *T) ![]const u8 {
+    const number_str = std.mem.sliceTo(slice, end);
+    // std.debug.print("number_Str='{s}'\n", .{number_str});
+    out.* = try std.fmt.parseUnsigned(T, number_str, 10);
+    return slice[number_str.len..];
+}

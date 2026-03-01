@@ -94,85 +94,35 @@ pub fn program2(ctx: ProgramContext) !void {
         try stdout.print("Next entry: {s}/{s} {any}\n", .{ SYSFS_USB_PATH, entry.name, entry.kind });
         try stdout.flush();
 
-        var id: usbTypes.HubOrEndPointIdentifier = undefined;
-        var speed: ?usbTypes.SpeedClass = null;
-        var serial: usbTypes.PciBdfNumber = .{ .str = undefined };
+        // var id: usbTypes.HubOrEndPointIdentifier = undefined;
+        // var speed: ?usbTypes.SpeedClass = null;
+        // var serial: usbTypes.PciBdfNumber = .{ .str = undefined };
 
-        if (entry.kind == .sym_link) {
-            id = try .fromStr(entry.name);
+        const id, const speed, const serial = try processDeviceDir(ctx, usb_dir, entry);
 
-            // Check that it converts back to the same string
-            const dev_str = try std.fmt.allocPrint(alloc, "{f}", .{id});
-            defer alloc.free(dev_str);
-            assert(std.mem.eql(u8, entry.name, dev_str));
+        if (id.type == .root_hub) {
+            const root_hub: *usbTypes.RootHub = try root_hub_pool.create();
+            root_hub.* = .{
+                .id = id,
+                .speed = speed,
+                .serial = serial,
+            };
+            try root_hubs.append(alloc, root_hub);
+        } else {
+            // if (id.type)
+            const device: *usbTypes.Device = try device_pool.create();
+            device.* = .{
+                .id = id,
+                .speed = speed,
+            };
+            try switch (id.type) {
+                .hub => hubs.append(alloc, device),
+                .endpoint => endpoints.append(alloc, device),
+                else => unreachable,
+            };
 
-            // Open the directory representing the device
-            var dev_dir = try usb_dir.openDir(entry.name, .{ .iterate = true });
-            defer dev_dir.close();
-
-            var dev_dir_it = dev_dir.iterateAssumeFirstIteration();
-            while (try dev_dir_it.next()) |entry2| {
-                if (std.mem.eql(u8, "speed", entry2.name)) {
-                    std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
-                    assert(entry2.kind == .file);
-
-                    const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
-                        std.debug.print("{any}\n", .{err});
-                        continue;
-                    };
-                    defer alloc.free(raw_data);
-
-                    // On linux at least, this file ends with a newline, and parseInt() doesn't like that
-                    const data = std.mem.trimEnd(u8, raw_data, "\r\n");
-
-                    speed = try .fromStringMbps(data);
-                    std.debug.print("speed = {}\n", .{speed.?.inMbps()});
-                } else if (std.mem.eql(u8, "serial", entry2.name)) {
-                    std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
-                    if (id.type == .root_hub) {
-                        assert(entry2.kind == .file);
-
-                        const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
-                            std.debug.print("{any}\n", .{err});
-                            continue;
-                        };
-                        defer alloc.free(raw_data);
-
-                        // On linux at least, this file ends with a newline, and parseInt() doesn't like that
-                        const data = std.mem.trimEnd(u8, raw_data, "\r\n");
-
-                        std.debug.print("{s}\n", .{data});
-                        std.debug.print("0x{x}\n", .{data});
-
-                        @memcpy(&serial.str, data);
-                    }
-                }
-            }
-
-            if (id.type == .root_hub) {
-                const root_hub: *usbTypes.RootHub = try root_hub_pool.create();
-                root_hub.* = .{
-                    .id = id,
-                    .speed = speed,
-                    .serial = serial,
-                };
-                try root_hubs.append(alloc, root_hub);
-            } else {
-                // if (id.type)
-                const device: *usbTypes.Device = try device_pool.create();
-                device.* = .{
-                    .id = id,
-                    .speed = speed,
-                };
-                try switch (id.type) {
-                    .hub => hubs.append(alloc, device),
-                    .endpoint => endpoints.append(alloc, device),
-                    else => unreachable,
-                };
-
-                const fetch = try device_map.fetchPut(id, device);
-                assert(fetch == null); // No two USB devices should have the same name
-            }
+            const fetch = try device_map.fetchPut(id, device);
+            assert(fetch == null); // No two USB devices should have the same name
         }
     }
 
@@ -212,6 +162,75 @@ pub fn program2(ctx: ProgramContext) !void {
     std.debug.print("{any}\n", .{val.?.speed});
 
     //
+}
+
+fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.Entry) !struct {
+    usbTypes.HubOrEndPointIdentifier,
+    ?usbTypes.SpeedClass,
+    usbTypes.PciBdfNumber,
+} {
+    // Unpack
+    const alloc = ctx.alloc;
+
+    var id: usbTypes.HubOrEndPointIdentifier = undefined;
+    var speed: ?usbTypes.SpeedClass = null;
+    var serial: usbTypes.PciBdfNumber = .{ .str = undefined };
+
+    if (entry.kind == .sym_link) {
+        id = try .fromStr(entry.name);
+
+        // Check that it converts back to the same string
+        const dev_str = try std.fmt.allocPrint(alloc, "{f}", .{id});
+        defer alloc.free(dev_str);
+        assert(std.mem.eql(u8, entry.name, dev_str));
+
+        // Open the directory representing the device
+        var dev_dir = try usb_dir.openDir(entry.name, .{ .iterate = true });
+        defer dev_dir.close();
+
+        var dev_dir_it = dev_dir.iterateAssumeFirstIteration();
+        while (try dev_dir_it.next()) |entry2| {
+            if (std.mem.eql(u8, "speed", entry2.name)) {
+                std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
+                assert(entry2.kind == .file);
+
+                const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
+                    std.debug.print("{any}\n", .{err});
+                    continue;
+                };
+                defer alloc.free(raw_data);
+
+                // On linux at least, this file ends with a newline, and parseInt() doesn't like that
+                const data = std.mem.trimEnd(u8, raw_data, "\r\n");
+
+                speed = try .fromStringMbps(data);
+                std.debug.print("speed = {}\n", .{speed.?.inMbps()});
+            } else if (std.mem.eql(u8, "serial", entry2.name)) {
+                std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
+                if (id.type == .root_hub) {
+                    assert(entry2.kind == .file);
+
+                    const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
+                        std.debug.print("{any}\n", .{err});
+                        continue;
+                    };
+                    defer alloc.free(raw_data);
+
+                    // On linux at least, this file ends with a newline, and parseInt() doesn't like that
+                    const data = std.mem.trimEnd(u8, raw_data, "\r\n");
+
+                    std.debug.print("{s}\n", .{data});
+                    std.debug.print("0x{x}\n", .{data});
+
+                    @memcpy(&serial.str, data);
+                }
+            }
+        }
+    } else {
+        unreachable;
+    }
+
+    return .{ id, speed, serial };
 }
 
 pub fn program(ctx: ProgramContext) !void {
