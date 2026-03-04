@@ -41,6 +41,8 @@ pub const RootHub = struct {
 pub const Device = struct {
     id: HubOrEndPointIdentifier,
     speed: ?SpeedClass,
+
+    devnum: ?u7 = null,
 };
 
 // Value-compatible with libusb

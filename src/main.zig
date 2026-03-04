@@ -98,7 +98,7 @@ pub fn program2(ctx: ProgramContext) !void {
         // var speed: ?usbTypes.SpeedClass = null;
         // var serial: usbTypes.PciBdfNumber = .{ .str = undefined };
 
-        const id, const speed, const serial = try processDeviceDir(ctx, usb_dir, entry);
+        const id, const speed, const serial, const devnum = try processDeviceDir(ctx, usb_dir, entry);
 
         if (id.type == .root_hub) {
             const root_hub: *usbTypes.RootHub = try root_hub_pool.create();
@@ -114,6 +114,7 @@ pub fn program2(ctx: ProgramContext) !void {
             device.* = .{
                 .id = id,
                 .speed = speed,
+                .devnum = devnum,
             };
             try switch (id.type) {
                 .hub => hubs.append(alloc, device),
@@ -152,6 +153,13 @@ pub fn program2(ctx: ProgramContext) !void {
     }
     try stdout.flush();
 
+    // Debug code for checking things
+    // Observe that 'devnum' is unique for hubs on a bus
+    // We could use it to key a map for each bus!
+    for (hubs.items) |hub| {
+        try stdout.print("{:3} - {f} - {}\n", .{ hub.devnum.?, hub.id, hub.speed.? });
+    }
+
     const val = device_map.get(.{
         .type = .hub,
         .bus = 2,
@@ -168,6 +176,7 @@ fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.
     usbTypes.HubOrEndPointIdentifier,
     ?usbTypes.SpeedClass,
     usbTypes.PciBdfNumber,
+    ?u7,
 } {
     // Unpack
     const alloc = ctx.alloc;
@@ -175,6 +184,7 @@ fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.
     var id: usbTypes.HubOrEndPointIdentifier = undefined;
     var speed: ?usbTypes.SpeedClass = null;
     var serial: usbTypes.PciBdfNumber = .{ .str = undefined };
+    var devnum: ?u7 = null;
 
     if (entry.kind == .sym_link) {
         id = try .fromStr(entry.name);
@@ -219,10 +229,26 @@ fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.
                     // On linux at least, this file ends with a newline, and parseInt() doesn't like that
                     const data = std.mem.trimEnd(u8, raw_data, "\r\n");
 
-                    std.debug.print("{s}\n", .{data});
-                    std.debug.print("0x{x}\n", .{data});
-
                     @memcpy(&serial.str, data);
+                }
+            } else if (std.mem.eql(u8, "devnum", entry2.name)) {
+                std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
+                if (id.type == .hub) {
+                    assert(entry2.kind == .file);
+
+                    const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
+                        std.debug.print("{any}\n", .{err});
+                        continue;
+                    };
+                    defer alloc.free(raw_data);
+
+                    // On linux at least, this file ends with a newline, and parseInt() doesn't like that
+                    const data = std.mem.trimEnd(u8, raw_data, "\r\n");
+
+                    // std.debug.print("{s}\n", .{data});
+                    // std.debug.print("0x{x}\n", .{data});
+
+                    devnum = try std.fmt.parseUnsigned(u7, data, 10);
                 }
             }
         }
@@ -230,7 +256,7 @@ fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.
         unreachable;
     }
 
-    return .{ id, speed, serial };
+    return .{ id, speed, serial, devnum };
 }
 
 pub fn program(ctx: ProgramContext) !void {
