@@ -10,6 +10,14 @@ const graphviz = @import("graphviz.zig");
 
 pub const usb_max_tiers = 7; // Tier 1 = root hub. other hubs are tier 2-6, devices are tier 1-7;
 
+// Guaranteed unique, so you can key a map from this
+pub const UniqueDeviceId = struct {
+    bus_num: usize,
+    dev_num: DeviceNum,
+};
+
+pub const DeviceNum = u7;
+
 pub const DeviceType = enum {
     root, // Dummy item to make the tree work
 
@@ -170,13 +178,13 @@ pub const HubOrEndPointIdentifier = struct {
     }
 };
 
-pub const DeviceTree = struct {
+pub const HubTree = struct {
     node: LinkedTree.Node = .{},
 
-    device: HubOrEndPointIdentifier,
+    id: UniqueDeviceId,
 
-    pub fn newDevice(self: *DeviceTree, arena: Allocator, new: HubOrEndPointIdentifier) !*DeviceTree {
-        const newNode = try arena.create(DeviceTree);
+    pub fn newDevice(self: *HubTree, arena: Allocator, new: UniqueDeviceId) !*HubTree {
+        const newNode = try arena.create(HubTree);
         newNode.* = .{
             .node = .{},
             .device = new,
@@ -186,16 +194,16 @@ pub const DeviceTree = struct {
         return newNode;
     }
 
-    pub fn exportDot(self: *DeviceTree, graph: *graphviz.Graph) !void {
+    pub fn exportDot(self: *HubTree, graph: *graphviz.Graph) !void {
         const rootNode = try graph.newNode("root");
 
         try exportDotRecursive(self, graph, rootNode);
     }
 
-    fn exportDotRecursive(parentDev: *DeviceTree, graph: *graphviz.Graph, parentGraphNode: *graphviz.Graph.Node) !void {
+    fn exportDotRecursive(parentDev: *HubTree, graph: *graphviz.Graph, parentGraphNode: *graphviz.Graph.Node) !void {
         var nextChildNode = parentDev.node.child;
         while (nextChildNode) |childNode| {
-            const child: *DeviceTree = @fieldParentPtr("node", childNode);
+            const child: *HubTree = @fieldParentPtr("node", childNode);
 
             var buf: [200]u8 = undefined;
             var fixedBufAllocator = std.heap.FixedBufferAllocator.init(&buf);

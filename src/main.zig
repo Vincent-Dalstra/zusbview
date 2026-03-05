@@ -159,11 +159,12 @@ pub fn program2(ctx: ProgramContext) !void {
     for (hubs.items) |hub| {
         try stdout.print("{:3} - {f} - {}\n", .{ hub.devnum.?, hub.id, hub.speed.? });
     }
+    try stdout.flush();
 
     const val = device_map.get(.{
         .type = .hub,
-        .bus = 2,
-        .ports_buffer = .{ 1, 0, 0, 0, 0, 0, 0 },
+        .bus = 3,
+        .ports_buffer = .{ 7, 0, 0, 0, 0, 0, 0 },
         .ports_len = 1,
     });
 
@@ -271,14 +272,14 @@ pub fn program(ctx: ProgramContext) !void {
     var count_root_hubs: usize = 0;
     var count_hubs: usize = 0;
 
-    var deviceTreeRoot: usbTypes.DeviceTree = .{
+    var deviceTreeRoot: usbTypes.HubTree = .{
         .device = .{
             .type = .root,
         },
         .node = .{},
     };
 
-    var hierarchy: [7]*usbTypes.DeviceTree = undefined;
+    var hierarchy: [7]*usbTypes.HubTree = undefined;
     hierarchy[0] = &deviceTreeRoot;
 
     var prev_depth: u8 = 0;
