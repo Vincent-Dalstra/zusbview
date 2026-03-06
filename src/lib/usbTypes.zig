@@ -124,15 +124,15 @@ pub const SpeedClass = enum(c_int) {
 };
 
 pub const HubOrEndPointIdentifier = struct {
-    type: AnyObjectType = undefined,
+    type: AnyObjectType,
 
-    bus: u8 = undefined,
+    bus: u8,
     // See fn ports(), which returns these two as a slice for convenience
     ports_buffer: [7]u8 = [_]u8{0} ** 7,
     ports_len: usize = 0,
 
-    iface: u8 = undefined,
-    endpoint: u8 = undefined,
+    iface: ?u8 = null, // TODO: Figure out the actual limits for this number
+    endpoint: ?u8 = null, // TODO: Figure out the actual limits for this number
 
     pub fn ports(self: *const HubOrEndPointIdentifier) []const u8 {
         return self.ports_buffer[0..self.ports_len];
@@ -187,18 +187,22 @@ pub const HubOrEndPointIdentifier = struct {
         }
 
         if (self.type == .endpoint) {
-            try writer.print(":{}.{}", .{ self.iface, self.endpoint });
+            try writer.print(":{}.{}", .{ self.iface.?, self.endpoint.? });
         }
     }
 
     pub fn fromStr(str: []const u8) !HubOrEndPointIdentifier {
-        var dev: HubOrEndPointIdentifier = .{};
         if (std.mem.eql(u8, str[0..3], "usb")) {
-            dev.type = .root_hub;
-            dev.bus = try std.fmt.parseInt(u8, str[3..], 10);
-            return dev;
+            return .{
+                .type = .root_hub,
+                .bus = try std.fmt.parseInt(u8, str[3..], 10),
+            };
         } else {
             const pre_semicolon = std.mem.sliceTo(str, ':');
+            var dev: HubOrEndPointIdentifier = .{
+                .type = undefined,
+                .bus = undefined,
+            };
 
             {
                 var slice = pre_semicolon;
@@ -219,6 +223,9 @@ pub const HubOrEndPointIdentifier = struct {
                 // std.debug.print("dev.ports={any}\n", .{dev.ports()});
             }
 
+            var iface: u8 = undefined;
+            var endpoint: u8 = undefined;
+
             if (pre_semicolon.len == str.len) {
                 // There was no semicolon
                 dev.type = .hub;
@@ -230,12 +237,16 @@ pub const HubOrEndPointIdentifier = struct {
 
                 var slice = post_semicolon;
 
-                slice = try parseIntUpTo(slice, '.', u8, &dev.iface);
+                slice = try parseIntUpTo(slice, '.', u8, &iface);
                 slice = skipString(slice, ".").?;
-                slice = try parseIntUpTo(slice, 0, u8, &dev.endpoint);
+                slice = try parseIntUpTo(slice, 0, u8, &endpoint);
 
                 assert(slice.len == 0);
             }
+
+            dev.iface = iface;
+            dev.endpoint = endpoint;
+
             return dev;
         }
     }
