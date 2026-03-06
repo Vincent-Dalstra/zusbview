@@ -130,9 +130,14 @@ pub fn program2(ctx: ProgramContext) !void {
 
     var usb_obj_it = map_id_to_object.iterator();
     var i: u32 = 0;
-    while (usb_obj_it.next()) |entry| {
+    while (usb_obj_it.next()) |entry| : (i += 1) {
         std.debug.print("{:3}: {f} - {f}\n", .{ i, entry.key_ptr.*, entry.value_ptr.*.id });
-        i += 1;
+
+        const id = entry.value_ptr.*.id;
+        const parent_id = id.parent() orelse continue;
+
+        const parent = map_id_to_object.get(parent_id) orelse continue;
+        std.debug.print("    parent: {f}\n", .{parent.id});
     }
 
     // for (root_hubs.items) |root_hub| {
