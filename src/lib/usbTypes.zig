@@ -138,6 +138,35 @@ pub const HubOrEndPointIdentifier = struct {
         return self.ports_buffer[0..self.ports_len];
     }
 
+    pub fn parent(self: HubOrEndPointIdentifier) ?HubOrEndPointIdentifier {
+        switch (self.type) {
+            .root_hub => return null,
+            .hub => {
+                assert(self.ports_len > 0);
+                if (self.ports_len == 1) {
+                    return .{
+                        .type = .root_hub,
+                        .bus = self.bus,
+                    };
+                } else {
+                    var parent_object = self;
+                    parent_object.ports_buffer[self.ports_len - 1] = 0;
+                    parent_object.ports_len -= 1;
+                    return parent_object;
+                }
+            },
+            .endpoint => {
+                return .{
+                    .type = .hub,
+                    .bus = self.bus,
+                    .ports_buffer = self.ports_buffer,
+                    .ports_len = self.ports_len,
+                };
+            },
+            else => unreachable,
+        }
+    }
+
     /// Creates the same names as found in  '/sys/bus/usb/devices'
     pub fn format(self: HubOrEndPointIdentifier, writer: *std.io.Writer) !void {
         if (self.type == .root_hub) {
