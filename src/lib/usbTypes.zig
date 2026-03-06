@@ -10,9 +10,9 @@ const graphviz = @import("graphviz.zig");
 
 pub const usb_max_tiers = 7; // Tier 1 = root hub. other hubs are tier 2-6, devices are tier 1-7;
 
-// Guaranteed unique, so you can key a map from this
+// Guaranteed unique across, so you can key a map from this
 pub const UniqueDeviceId = struct {
-    bus_num: usize,
+    bus_num: u16,
     dev_num: DeviceNum,
 };
 
@@ -29,6 +29,25 @@ pub const DeviceType = enum {
     endpoint,
 };
 
+pub const AnyObject = struct {
+    id: HubOrEndPointIdentifier,
+    obj: AnyObjectEnum,
+};
+
+pub const AnyObjectType = enum {
+    root_hub,
+    hub,
+    device,
+    endpoint,
+};
+
+pub const AnyObjectEnum = union(AnyObjectType) {
+    root_hub: RootHub,
+    hub: Hub,
+    device: Device,
+    endpoint: Endpoint,
+};
+
 pub const PciBdfNumber = struct {
     // bus: u8,
     // device: u5,
@@ -42,15 +61,30 @@ pub const PciBdfNumber = struct {
 
 pub const RootHub = struct {
     id: HubOrEndPointIdentifier,
+
     speed: ?SpeedClass,
     serial: ?PciBdfNumber,
+
+    devnum: u7, // Should always be 1, for a root hub
+};
+
+pub const Hub = struct {
+    id: HubOrEndPointIdentifier,
+
+    speed: ?SpeedClass,
+    devnum: u7,
 };
 
 pub const Device = struct {
     id: HubOrEndPointIdentifier,
-    speed: ?SpeedClass,
 
-    devnum: ?u7 = null,
+    speed: ?SpeedClass,
+};
+
+pub const Endpoint = struct {
+    id: HubOrEndPointIdentifier,
+
+    speed: ?SpeedClass,
 };
 
 // Value-compatible with libusb
@@ -90,7 +124,7 @@ pub const SpeedClass = enum(c_int) {
 };
 
 pub const HubOrEndPointIdentifier = struct {
-    type: DeviceType = undefined,
+    type: AnyObjectType = undefined,
 
     bus: u8 = undefined,
     // See fn ports(), which returns these two as a slice for convenience

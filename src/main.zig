@@ -57,6 +57,12 @@ pub fn main() !void {
 
 const SYSFS_USB_PATH = "/sys/bus/usb/devices";
 
+// var map_devnum_to_id: std.AutoHashMap(usbTypes.UniqueDeviceId, *usbTypes.HubOrEndPointIdentifier) = .empty;
+// var map_id_to_devnum: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbTypes.UniqueDeviceId) = .empty;
+var map_id_to_object: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbTypes.AnyObject) = undefined;
+
+var map_id_to_parent: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, ?usbTypes.HubOrEndPointIdentifier) = undefined;
+
 pub fn program2(ctx: ProgramContext) !void {
     // Unpack
     const alloc = ctx.alloc;
@@ -66,25 +72,17 @@ pub fn program2(ctx: ProgramContext) !void {
     defer arena.deinit();
     // const aalloc = arena.allocator();
 
-    var device_pool: std.heap.MemoryPool(usbTypes.Device) = try .initPreheated(alloc, 100);
-    defer device_pool.deinit();
-    var root_hub_pool: std.heap.MemoryPool(usbTypes.RootHub) = try .initPreheated(alloc, 10);
-    defer root_hub_pool.deinit();
+    var object_pool: std.heap.MemoryPool(usbTypes.AnyObject) = .init(alloc);
+    defer object_pool.deinit();
 
-    var device_map: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbTypes.Device) = .init(alloc);
-    defer device_map.deinit();
-
-    // // Create a device, which will be copied into the ArrayList once it's done & validated
-    // var dev: *usbTypes.Device = try device_pool.create();
-    // dev.* = .{
-    //     .id = try .fromStr(entry.name), // We can fill this one in right away
-    //     .speed = null,
-    // };
-
-    //
-    var root_hubs: std.ArrayList(*usbTypes.RootHub) = .empty;
-    var hubs: std.ArrayList(*usbTypes.Device) = .empty;
-    var endpoints: std.ArrayList(*usbTypes.Device) = .empty;
+    // map_devnum_to_id = .init(alloc);
+    // defer map_devnum_to_id.deinit();
+    // map_id_to_devnum = .init(alloc);
+    // defer map_id_to_devnum.deinit();
+    map_id_to_object = .init(alloc);
+    defer map_id_to_object.deinit();
+    map_id_to_parent = .init(alloc);
+    defer map_id_to_parent.deinit();
 
     var usb_dir = try std.fs.openDirAbsolute(SYSFS_USB_PATH, .{ .iterate = true });
     defer usb_dir.close();
@@ -94,86 +92,97 @@ pub fn program2(ctx: ProgramContext) !void {
         try stdout.print("Next entry: {s}/{s} {any}\n", .{ SYSFS_USB_PATH, entry.name, entry.kind });
         try stdout.flush();
 
-        // var id: usbTypes.HubOrEndPointIdentifier = undefined;
-        // var speed: ?usbTypes.SpeedClass = null;
-        // var serial: usbTypes.PciBdfNumber = .{ .str = undefined };
+        const obj_type, const id, const speed, const serial, const devnum = try processDeviceDir(ctx, usb_dir, entry);
 
-        const id, const speed, const serial, const devnum = try processDeviceDir(ctx, usb_dir, entry);
-
-        if (id.type == .root_hub) {
-            const root_hub: *usbTypes.RootHub = try root_hub_pool.create();
-            root_hub.* = .{
-                .id = id,
-                .speed = speed,
-                .serial = serial,
-            };
-            try root_hubs.append(alloc, root_hub);
-        } else {
-            // if (id.type)
-            const device: *usbTypes.Device = try device_pool.create();
-            device.* = .{
-                .id = id,
-                .speed = speed,
-                .devnum = devnum,
-            };
-            try switch (id.type) {
-                .hub => hubs.append(alloc, device),
-                .endpoint => endpoints.append(alloc, device),
-                else => unreachable,
-            };
-
-            const fetch = try device_map.fetchPut(id, device);
-            assert(fetch == null); // No two USB devices should have the same name
-        }
-    }
-
-    for (root_hubs.items) |root_hub| {
-        try stdout.print("{f}: {s}\n", .{ root_hub.id, root_hub.serial.?.str });
-    }
-    try stdout.flush();
-
-    for (std.enums.values(usbTypes.SpeedClass)) |speed| {
-        if (speed == .UNKNOWN) {
-            try stdout.print("======== Unknown speed ========\n", .{});
-            continue;
-        }
-        try stdout.print("======== {} Mbps ========\n", .{speed.inMbps()});
-
-        for (hubs.items) |hub| {
-            if (hub.speed == speed) {
-                try stdout.print("{f}\n", .{hub.id});
-            }
+        const object: *usbTypes.AnyObject = try object_pool.create();
+        object.id = id;
+        switch (obj_type) {
+            .root_hub => {
+                const temp: usbTypes.RootHub = .{
+                    .id = id,
+                    .speed = speed,
+                    .serial = serial,
+                    .devnum = devnum.?,
+                };
+                object.obj = .{ .root_hub = temp };
+            },
+            .hub => {
+                const temp: usbTypes.Hub = .{
+                    .id = id,
+                    .devnum = devnum.?,
+                    .speed = speed,
+                };
+                object.obj = .{ .hub = temp };
+            },
+            .endpoint => {
+                const temp: usbTypes.Endpoint = .{
+                    .id = id,
+                    .speed = speed,
+                };
+                object.obj = .{ .endpoint = temp };
+            },
+            else => unreachable,
         }
 
-        for (endpoints.items) |ep| {
-            if (ep.speed == speed) {
-                try stdout.print("{f}\n", .{ep.id});
-            }
-        }
+        // No two USB devices should have the id or devnum
+        try map_id_to_object.putNoClobber(id, object);
     }
-    try stdout.flush();
 
-    // Debug code for checking things
-    // Observe that 'devnum' is unique for hubs on a bus
-    // We could use it to key a map for each bus!
-    for (hubs.items) |hub| {
-        try stdout.print("{:3} - {f} - {}\n", .{ hub.devnum.?, hub.id, hub.speed.? });
+    var usb_obj_it = map_id_to_object.iterator();
+    var i: u32 = 0;
+    while (usb_obj_it.next()) |entry| {
+        std.debug.print("{:3}: {f} - {f}\n", .{ i, entry.key_ptr.*, entry.value_ptr.*.id });
+        i += 1;
     }
-    try stdout.flush();
 
-    const val = device_map.get(.{
-        .type = .hub,
-        .bus = 3,
-        .ports_buffer = .{ 7, 0, 0, 0, 0, 0, 0 },
-        .ports_len = 1,
-    });
+    // for (root_hubs.items) |root_hub| {
+    //     try stdout.print("{f}: {s}\n", .{ root_hub.id, root_hub.serial.?.str });
+    // }
+    // try stdout.flush();
 
-    std.debug.print("{any}\n", .{val.?.speed});
+    // for (std.enums.values(usbTypes.SpeedClass)) |speed| {
+    //     if (speed == .UNKNOWN) {
+    //         try stdout.print("======== Unknown speed ========\n", .{});
+    //         continue;
+    //     }
+    //     try stdout.print("======== {} Mbps ========\n", .{speed.inMbps()});
+
+    //     for (hubs.items) |hub| {
+    //         if (hub.speed == speed) {
+    //             try stdout.print("{f}\n", .{hub.id});
+    //         }
+    //     }
+
+    //     for (endpoints.items) |ep| {
+    //         if (ep.speed == speed) {
+    //             try stdout.print("{f}\n", .{ep.id});
+    //         }
+    //     }
+    // }
+    // try stdout.flush();
+
+    // // Debug code for checking things
+    // // Observe that 'devnum' is unique for hubs on a bus
+    // // We could use it to key a map for each bus!
+    // for (hubs.items) |hub| {
+    //     try stdout.print("{:3} - {f} - {}\n", .{ hub.devnum.?, hub.id, hub.speed.? });
+    // }
+    // try stdout.flush();
+
+    // const val = device_map.get(.{
+    //     .type = .hub,
+    //     .bus = 3,
+    //     .ports_buffer = .{ 7, 0, 0, 0, 0, 0, 0 },
+    //     .ports_len = 1,
+    // });
+
+    // std.debug.print("{any}\n", .{val.?.speed});
 
     //
 }
 
 fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.Entry) !struct {
+    usbTypes.AnyObjectType,
     usbTypes.HubOrEndPointIdentifier,
     ?usbTypes.SpeedClass,
     usbTypes.PciBdfNumber,
@@ -182,6 +191,7 @@ fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.
     // Unpack
     const alloc = ctx.alloc;
 
+    var obj_type: usbTypes.AnyObjectType = undefined;
     var id: usbTypes.HubOrEndPointIdentifier = undefined;
     var speed: ?usbTypes.SpeedClass = null;
     var serial: usbTypes.PciBdfNumber = .{ .str = undefined };
@@ -194,6 +204,9 @@ fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.
         const dev_str = try std.fmt.allocPrint(alloc, "{f}", .{id});
         defer alloc.free(dev_str);
         assert(std.mem.eql(u8, entry.name, dev_str));
+
+        // Conversion process happens to determine the type, too
+        obj_type = id.type;
 
         // Open the directory representing the device
         var dev_dir = try usb_dir.openDir(entry.name, .{ .iterate = true });
@@ -234,7 +247,7 @@ fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.
                 }
             } else if (std.mem.eql(u8, "devnum", entry2.name)) {
                 std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
-                if (id.type == .hub) {
+                if (id.type == .hub or id.type == .root_hub) {
                     assert(entry2.kind == .file);
 
                     const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
@@ -257,7 +270,7 @@ fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.
         unreachable;
     }
 
-    return .{ id, speed, serial, devnum };
+    return .{ obj_type, id, speed, serial, devnum };
 }
 
 pub fn program(ctx: ProgramContext) !void {
