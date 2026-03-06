@@ -70,7 +70,7 @@ pub fn program2(ctx: ProgramContext) !void {
 
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
-    // const aalloc = arena.allocator();
+    const aalloc = arena.allocator();
 
     var object_pool: std.heap.MemoryPool(usbTypes.AnyObject) = .init(alloc);
     defer object_pool.deinit();
@@ -89,8 +89,7 @@ pub fn program2(ctx: ProgramContext) !void {
 
     var usb_dir_it = usb_dir.iterateAssumeFirstIteration();
     while (try usb_dir_it.next()) |entry| {
-        try stdout.print("Next entry: {s}/{s} {any}\n", .{ SYSFS_USB_PATH, entry.name, entry.kind });
-        try stdout.flush();
+        std.debug.print("Next entry: {s}/{s} {any}\n", .{ SYSFS_USB_PATH, entry.name, entry.kind });
 
         const obj_type, const id, const speed, const serial, const devnum = try processDeviceDir(ctx, usb_dir, entry);
 
@@ -128,16 +127,50 @@ pub fn program2(ctx: ProgramContext) !void {
         try map_id_to_object.putNoClobber(id, object);
     }
 
-    var usb_obj_it = map_id_to_object.iterator();
-    var i: u32 = 0;
-    while (usb_obj_it.next()) |entry| : (i += 1) {
-        std.debug.print("{:3}: {f} - {f}\n", .{ i, entry.key_ptr.*, entry.value_ptr.*.id });
+    {
+        var usb_obj_it = map_id_to_object.iterator();
+        var i: u32 = 0;
+        while (usb_obj_it.next()) |entry| : (i += 1) {
+            std.debug.print("{:3}: {f} - {f}\n", .{ i, entry.key_ptr.*, entry.value_ptr.*.id });
 
-        const id = entry.value_ptr.*.id;
-        const parent_id = id.parent() orelse continue;
+            const id = entry.value_ptr.*.id;
+            const parent_id = id.parent() orelse continue;
 
-        const parent = map_id_to_object.get(parent_id) orelse continue;
-        std.debug.print("    parent: {f}\n", .{parent.id});
+            const parent = map_id_to_object.get(parent_id) orelse continue;
+            std.debug.print("    parent: {f}\n", .{parent.id});
+        }
+    }
+
+    {
+        var graph: graphviz.Graph = .{
+            .directed = true,
+        };
+        try graph.init(aalloc, "USB graph");
+        defer graph.deinit();
+
+        // ----
+
+        var usb_obj_it = map_id_to_object.iterator();
+        while (usb_obj_it.next()) |entry| {
+            const id = entry.value_ptr.*.id;
+
+            const name = try std.fmt.allocPrint(alloc, "{f}", .{id});
+            defer alloc.free(name);
+            const node = graph.findNode(name) orelse try graph.newNode(name);
+            //
+            const parent_id = id.parent() orelse continue;
+
+            const parent_name = try std.fmt.allocPrint(alloc, "{f}", .{parent_id});
+            defer alloc.free(parent_name);
+            const parent_node = graph.findNode(parent_name) orelse try graph.newNode(parent_name);
+            //
+            try graph.newEdge(parent_node, node);
+        }
+
+        // ----
+
+        try graph.print(stdout);
+        try ctx.stdout.flush();
     }
 
     // for (root_hubs.items) |root_hub| {
