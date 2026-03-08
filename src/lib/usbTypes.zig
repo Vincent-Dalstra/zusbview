@@ -166,25 +166,37 @@ pub const HubOrEndPointIdentifier = struct {
             .device => {
                 var parent_object = self;
                 parent_object.type = .hub;
+                parent_object.ports_buffer[self.ports_len - 1] = 0;
+                parent_object.ports_len -= 1;
+
+                if (parent_object.ports_len == 0) {
+                    return .{
+                        .type = .root_hub,
+                        .bus = self.bus,
+                    };
+                }
                 return parent_object;
             },
             .endpoint => {
-                const dev: HubOrEndPointIdentifier = .{
+                // The endpoint for a root hub is a little weird
+                // e.g. 'usb4' -> '4-0:1-0'
+                if (self.ports().len == 1) {
+                    if (self.iface == 1) {
+                        if (self.endpoint == 0) {
+                            return .{
+                                .type = .root_hub,
+                                .bus = self.bus,
+                            };
+                        }
+                    }
+                }
+
+                return .{
                     .type = .device,
                     .bus = self.bus,
                     .ports_buffer = self.ports_buffer,
                     .ports_len = self.ports_len,
                 };
-                const hub = dev.parent();
-
-                // The endpoint for a root hub is a little weird
-                // e.g. 'usb4' -> '4-0:1-0'
-                if (hub.?.ports().len == 1) {
-                    if (hub.?.ports()[0] == 0) {
-                        return hub.?.parent();
-                    }
-                }
-                return dev.parent();
             },
         }
     }

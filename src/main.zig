@@ -154,6 +154,8 @@ pub fn program(ctx: ProgramContext) !void {
                 }
             }
 
+            std.debug.print("id = {f} ({})", .{ id, @intFromEnum(id.type) });
+
             const name = try std.fmt.allocPrint(alloc, "{f}", .{id});
             defer alloc.free(name);
             const node = graph.findNode(name) orelse try graph.newNode(name);
@@ -182,6 +184,8 @@ pub fn program(ctx: ProgramContext) !void {
             }
 
             const parent_id = id.parent() orelse continue;
+            std.debug.print("  parent = {f}\n", .{parent_id});
+
             {
                 const parent_name = try std.fmt.allocPrint(alloc, "{f}", .{parent_id});
                 defer alloc.free(parent_name);
@@ -282,6 +286,30 @@ fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.
                     // std.debug.print("0x{x}\n", .{data});
 
                     devnum = try std.fmt.parseUnsigned(u7, data, 10);
+                }
+            } else if (std.mem.eql(u8, "maxchild", entry2.name)) {
+                std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
+                if (id.type == .hub or id.type == .root_hub) {
+                    assert(entry2.kind == .file);
+
+                    const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
+                        std.debug.print("{any}\n", .{err});
+                        continue;
+                    };
+                    defer alloc.free(raw_data);
+
+                    // On linux at least, this file ends with a newline, and parseInt() doesn't like that
+                    const data = std.mem.trimEnd(u8, raw_data, "\r\n");
+
+                    // std.debug.print("{s}\n", .{data});
+                    // std.debug.print("0x{x}\n", .{data});
+
+                    const maxchild = try std.fmt.parseUnsigned(u8, data, 10);
+
+                    if (maxchild == 0) {
+                        assert(id.type == .hub);
+                        id.type = .device;
+                    }
                 }
             }
         }
