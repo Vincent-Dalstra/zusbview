@@ -222,15 +222,15 @@ pub const HubOrEndPointIdentifier = struct {
                 var slice = pre_semicolon;
 
                 // Always starts with bus number
-                slice = try parseIntUpTo(slice, '-', u8, &dev.bus);
+                dev.bus, slice = try parseIntUpTo(slice, '-', u8);
                 slice = skipString(slice, "-").?;
 
                 var depth: u8 = 0;
-                slice = try parseIntUpTo(slice, '.', u8, &dev.ports_buffer[depth]);
+                dev.ports_buffer[depth], slice = try parseIntUpTo(slice, '.', u8);
                 depth += 1;
                 while (true) {
                     slice = skipString(slice, ".") orelse break;
-                    slice = try parseIntUpTo(slice, '.', u8, &dev.ports_buffer[depth]);
+                    dev.ports_buffer[depth], slice = try parseIntUpTo(slice, '.', u8);
                     depth += 1;
                 }
                 dev.ports_len = depth;
@@ -244,22 +244,16 @@ pub const HubOrEndPointIdentifier = struct {
             } else {
                 dev.type = .endpoint;
 
-                var iface: u8 = undefined;
-                var endpoint: u8 = undefined;
-
                 const post_semicolon = str[(pre_semicolon.len + 1)..];
                 assert(post_semicolon.len >= 3);
 
                 var slice = post_semicolon;
 
-                slice = try parseIntUpTo(slice, '.', u8, &iface);
+                dev.iface, slice = try parseIntUpTo(slice, '.', u8);
                 slice = skipString(slice, ".").?;
-                slice = try parseIntUpTo(slice, 0, u8, &endpoint);
+                dev.endpoint, slice = try parseIntUpTo(slice, 0, u8);
 
                 assert(slice.len == 0);
-
-                dev.iface = iface;
-                dev.endpoint = endpoint;
 
                 return dev;
             }
@@ -343,9 +337,9 @@ fn skipString(slice: []const u8, expected: []const u8) ?[]const u8 {
     }
 }
 
-fn parseIntUpTo(slice: []const u8, comptime end: u8, T: type, out: *T) ![]const u8 {
+fn parseIntUpTo(slice: []const u8, comptime end: u8, T: type) !struct { T, []const u8 } {
     const number_str = std.mem.sliceTo(slice, end);
     // std.debug.print("number_Str='{s}'\n", .{number_str});
-    out.* = try std.fmt.parseUnsigned(T, number_str, 10);
-    return slice[number_str.len..];
+    const out: T = try std.fmt.parseUnsigned(T, number_str, 10);
+    return .{ out, slice[number_str.len..] };
 }
