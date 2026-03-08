@@ -175,6 +175,15 @@ pub const HubOrEndPointIdentifier = struct {
                     .ports_buffer = self.ports_buffer,
                     .ports_len = self.ports_len,
                 };
+                const hub = dev.parent();
+
+                // The endpoint for a root hub is a little weird
+                // e.g. 'usb4' -> '4-0:1-0'
+                if (hub.?.ports().len == 1) {
+                    if (hub.?.ports()[0] == 0) {
+                        return hub.?.parent();
+                    }
+                }
                 return dev.parent();
             },
         }
