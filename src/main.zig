@@ -145,6 +145,15 @@ pub fn program(ctx: ProgramContext) !void {
         while (usb_obj_it.next()) |entry| {
             const id = entry.value_ptr.*.id;
 
+            // Every hub and root_hub has an endpoint associated with it; not important to draw
+            if (id.type == .endpoint) {
+                if (id.iface == 1) {
+                    if (id.endpoint == 0) {
+                        continue;
+                    }
+                }
+            }
+
             const name = try std.fmt.allocPrint(alloc, "{f}", .{id});
             defer alloc.free(name);
             const node = graph.findNode(name) orelse try graph.newNode(name);
