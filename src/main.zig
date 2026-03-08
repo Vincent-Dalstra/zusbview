@@ -49,7 +49,7 @@ pub fn main() !void {
     };
 
     // try program(program_ctx);
-    try program2(program_ctx);
+    try program(program_ctx);
 
     try stdout.flush();
     try stderr.flush();
@@ -60,10 +60,10 @@ const SYSFS_USB_PATH = "/sys/bus/usb/devices";
 // var map_devnum_to_id: std.AutoHashMap(usbTypes.UniqueDeviceId, *usbTypes.HubOrEndPointIdentifier) = .empty;
 // var map_id_to_devnum: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbTypes.UniqueDeviceId) = .empty;
 var map_id_to_object: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbTypes.AnyObject) = undefined;
+// var map_id_to_parent: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, ?usbTypes.HubOrEndPointIdentifier) = undefined;
+var map_id_to_speed: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, usbTypes.SpeedClass) = undefined;
 
-var map_id_to_parent: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, ?usbTypes.HubOrEndPointIdentifier) = undefined;
-
-pub fn program2(ctx: ProgramContext) !void {
+pub fn program(ctx: ProgramContext) !void {
     // Unpack
     const alloc = ctx.alloc;
     const stdout = ctx.stdout;
@@ -81,8 +81,10 @@ pub fn program2(ctx: ProgramContext) !void {
     // defer map_id_to_devnum.deinit();
     map_id_to_object = .init(alloc);
     defer map_id_to_object.deinit();
-    map_id_to_parent = .init(alloc);
-    defer map_id_to_parent.deinit();
+    // map_id_to_parent = .init(alloc);
+    // defer map_id_to_parent.deinit();
+    map_id_to_speed = .init(alloc);
+    defer map_id_to_speed.deinit();
 
     var usb_dir = try std.fs.openDirAbsolute(SYSFS_USB_PATH, .{ .iterate = true });
     defer usb_dir.close();
@@ -125,19 +127,8 @@ pub fn program2(ctx: ProgramContext) !void {
 
         // No two USB devices should have the id or devnum
         try map_id_to_object.putNoClobber(id, object);
-    }
-
-    {
-        var usb_obj_it = map_id_to_object.iterator();
-        var i: u32 = 0;
-        while (usb_obj_it.next()) |entry| : (i += 1) {
-            std.debug.print("{:3}: {f} - {f}\n", .{ i, entry.key_ptr.*, entry.value_ptr.*.id });
-
-            const id = entry.value_ptr.*.id;
-            const parent_id = id.parent() orelse continue;
-
-            const parent = map_id_to_object.get(parent_id) orelse continue;
-            std.debug.print("    parent: {f}\n", .{parent.id});
+        if (speed) |s| {
+            try map_id_to_speed.putNoClobber(id, s);
         }
     }
 
@@ -159,12 +150,25 @@ pub fn program2(ctx: ProgramContext) !void {
             const node = graph.findNode(name) orelse try graph.newNode(name);
             //
 
-            if (id.type == .root_hub) {
-                const root_hub = entry.value_ptr.*.obj.root_hub;
-                const serial = root_hub.serial.?;
+            // if (id.type == .root_hub) {
+            //     const root_hub = entry.value_ptr.*.obj.root_hub;
+            //     const serial = root_hub.serial.?;
 
-                const cluster_name = "cluster_" ++ serial.str;
+            //     const cluster_name = "cluster_" ++ serial.str;
+            //     const cluster = graph.findCluster(cluster_name) orelse try graph.newCluster(cluster_name);
+            //     try cluster.addNode(node);
+            // }
+
+            var speed = map_id_to_speed.get(id);
+            if (speed == null) speed = map_id_to_speed.get(id.parent().?);
+
+            // const speed = map_id_to_speed.get(id).?;
+            if (speed) |s| {
+                const speed_string = if (s.isUsb2()) "Usb 2.0" else "Usb 3.0";
+                const cluster_name = try std.fmt.allocPrint(alloc, "cluster_{s}", .{speed_string});
+                defer alloc.free(cluster_name);
                 const cluster = graph.findCluster(cluster_name) orelse try graph.newCluster(cluster_name);
+
                 try cluster.addNode(node);
             }
 
@@ -173,7 +177,7 @@ pub fn program2(ctx: ProgramContext) !void {
                 const parent_name = try std.fmt.allocPrint(alloc, "{f}", .{parent_id});
                 defer alloc.free(parent_name);
                 const parent_node = graph.findNode(parent_name) orelse try graph.newNode(parent_name);
-                //
+
                 try graph.newEdge(parent_node, node);
             }
         }
@@ -184,50 +188,7 @@ pub fn program2(ctx: ProgramContext) !void {
         try ctx.stdout.flush();
     }
 
-    // for (root_hubs.items) |root_hub| {
-    //     try stdout.print("{f}: {s}\n", .{ root_hub.id, root_hub.serial.?.str });
-    // }
-    // try stdout.flush();
-
-    // for (std.enums.values(usbTypes.SpeedClass)) |speed| {
-    //     if (speed == .UNKNOWN) {
-    //         try stdout.print("======== Unknown speed ========\n", .{});
-    //         continue;
-    //     }
-    //     try stdout.print("======== {} Mbps ========\n", .{speed.inMbps()});
-
-    //     for (hubs.items) |hub| {
-    //         if (hub.speed == speed) {
-    //             try stdout.print("{f}\n", .{hub.id});
-    //         }
-    //     }
-
-    //     for (endpoints.items) |ep| {
-    //         if (ep.speed == speed) {
-    //             try stdout.print("{f}\n", .{ep.id});
-    //         }
-    //     }
-    // }
-    // try stdout.flush();
-
-    // // Debug code for checking things
-    // // Observe that 'devnum' is unique for hubs on a bus
-    // // We could use it to key a map for each bus!
-    // for (hubs.items) |hub| {
-    //     try stdout.print("{:3} - {f} - {}\n", .{ hub.devnum.?, hub.id, hub.speed.? });
-    // }
-    // try stdout.flush();
-
-    // const val = device_map.get(.{
-    //     .type = .hub,
-    //     .bus = 3,
-    //     .ports_buffer = .{ 7, 0, 0, 0, 0, 0, 0 },
-    //     .ports_len = 1,
-    // });
-
-    // std.debug.print("{any}\n", .{val.?.speed});
-
-    //
+    return;
 }
 
 fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.Entry) !struct {
@@ -320,150 +281,6 @@ fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.
     }
 
     return .{ obj_type, id, speed, serial, devnum };
-}
-
-pub fn program(ctx: ProgramContext) !void {
-    // Unpack
-
-    // Memory for graphs is free'd in one go
-    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer arena.deinit();
-    const aalloc = arena.allocator();
-
-    var count_devices: usize = 0;
-    var count_root_hubs: usize = 0;
-    var count_hubs: usize = 0;
-
-    var deviceTreeRoot: usbTypes.HubTree = .{
-        .device = .{
-            .type = .root,
-        },
-        .node = .{},
-    };
-
-    var hierarchy: [7]*usbTypes.HubTree = undefined;
-    hierarchy[0] = &deviceTreeRoot;
-
-    var prev_depth: u8 = 0;
-    while (true) {
-        var dev: usbTypes.Device = .{
-            .type = undefined,
-        };
-
-        var depth: u8 = 1;
-
-        const bare_line0 = try ctx.stdin.takeDelimiter('\n') orelse break;
-        const line0 = std.mem.trim(u8, bare_line0, "\r");
-        const bare_line1 = try ctx.stdin.takeDelimiter('\n') orelse break;
-        const line1 = std.mem.trim(u8, bare_line1, "\r");
-        _ = line1;
-
-        // std.debug.print("length {}: {s}\n", .{ line0.len, line0 });
-        // std.debug.print("length {}: {s}\n", .{ line1.len, line1 });
-
-        if (0 < std.mem.count(u8, line0, "Class=root_hub")) {
-            dev.type = .root_hub;
-            count_root_hubs += 1;
-        } else if (0 < std.mem.count(u8, line0, "Class=Hub")) {
-            dev.type = .hub;
-            count_hubs += 1;
-        } else {
-            dev.type = .iface;
-            count_devices += 1;
-        }
-
-        var slice = line0;
-        while (true) {
-            if (std.mem.eql(u8, "    ", slice[0..4])) {
-                slice = slice[4..];
-
-                depth += 1;
-                continue;
-            } else if (std.mem.eql(u8, "/:  ", slice[0..4])) {
-                slice = slice[4..];
-
-                assert(depth == 1);
-                assert(dev.type == .root_hub);
-                break;
-            } else if (std.mem.eql(u8, "|__ ", slice[0..4])) {
-                slice = slice[4..];
-
-                assert(depth >= 2);
-                break;
-            } else {
-                unreachable;
-            }
-            unreachable;
-        }
-
-        // Only 5 chained hubs are permitted by USB spec (Root hub = 'Tier 1', max device 'Tier 7')
-        if (dev.type == .hub) assert(depth <= (usb_max_tiers - 1));
-        if (dev.type == .device) assert(depth <= usb_max_tiers);
-
-        // lsusb -tv shows them in order, so we shouldn't jump a tier!
-        assert(depth <= prev_depth + 1);
-
-        // need a unique name... we can use the 'ID' on the second line
-
-        if (dev.type == .root_hub) {
-            slice = skipString(slice, "Bus ");
-            slice = try parseIntUpTo(slice, '.', u8, &dev.bus);
-            slice = skipString(slice, ".");
-
-            // temp
-        } else {
-            dev.bus = hierarchy[1].device.bus;
-        }
-
-        slice = skipString(slice, "Port ");
-        slice = try parseIntUpTo(slice, ':', u8, &dev.port);
-        slice = skipString(slice, ": Dev ");
-        slice = try parseIntUpTo(slice, ',', u8, &dev.dev);
-
-        if (dev.type == .hub or dev.type == .iface) {
-            slice = skipString(slice, ", If ");
-            slice = try parseIntUpTo(slice, ',', u8, &dev.iface);
-        }
-
-        slice = skipString(slice, ", Class=");
-        slice = slice[std.mem.sliceTo(slice, ',').len..]; // ignored, for now
-
-        slice = skipString(slice, ", Driver=");
-        slice = slice[std.mem.sliceTo(slice, ',').len..]; // ignored, for now
-
-        slice = skipString(slice, ", ");
-        slice = try parseUsbSpeed(slice, 'M', &dev.speed);
-
-        // slice = std.mem.trim(u8, slice, " "); // Remove whitespace at start
-
-        // // Check it starts with "ID "
-        // assert(std.mem.eql(u8, "ID ", slice[0..3]));
-        // slice = slice[3..];
-
-        // id = slice[0..9];
-
-        // Add to device 'tree' so that lower items can figure out who their parent is
-        hierarchy[depth] = try hierarchy[depth - 1].newDevice(
-            aalloc,
-            dev,
-        );
-
-        prev_depth = depth;
-    }
-
-    var graph: graphviz.Graph = .{
-        .directed = true,
-    };
-    try graph.init(aalloc, "USB graph");
-    defer graph.deinit();
-
-    try deviceTreeRoot.exportDot(&graph);
-
-    try graph.print(ctx.stdout);
-    try ctx.stdout.flush();
-
-    try ctx.stderr.print("Root hubs = {}, hubs = {}, devices = {}\n", .{ count_root_hubs, count_hubs, count_devices });
-    try ctx.stderr.flush();
 }
 
 fn grabLine(reader: *std.io.Reader) ?[]u8 {

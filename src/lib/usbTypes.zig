@@ -97,6 +97,14 @@ pub const SpeedClass = enum(c_int) {
     SUPER_PLUS = 5,
     SUPER_PLUS_X2 = 6,
 
+    pub fn isUsb2(self: SpeedClass) bool {
+        return switch (self) {
+            .UNKNOWN => unreachable,
+            .LOW, .FULL, .HIGH => true,
+            .SUPER, .SUPER_PLUS, .SUPER_PLUS_X2 => false,
+        };
+    }
+
     pub fn inMbps(self: SpeedClass) u32 {
         return switch (self) {
             .LOW => 1, // Actually 1.5 Mbps, but general convention is to represent it as '1'
@@ -155,15 +163,20 @@ pub const HubOrEndPointIdentifier = struct {
                     return parent_object;
                 }
             },
+            .device => {
+                var parent_object = self;
+                parent_object.type = .hub;
+                return parent_object;
+            },
             .endpoint => {
-                return .{
-                    .type = .hub,
+                const dev: HubOrEndPointIdentifier = .{
+                    .type = .device,
                     .bus = self.bus,
                     .ports_buffer = self.ports_buffer,
                     .ports_len = self.ports_len,
                 };
+                return dev.parent();
             },
-            else => unreachable,
         }
     }
 
@@ -198,11 +211,12 @@ pub const HubOrEndPointIdentifier = struct {
                 .bus = try std.fmt.parseInt(u8, str[3..], 10),
             };
         } else {
-            const pre_semicolon = std.mem.sliceTo(str, ':');
             var dev: HubOrEndPointIdentifier = .{
                 .type = undefined,
                 .bus = undefined,
             };
+
+            const pre_semicolon = std.mem.sliceTo(str, ':');
 
             {
                 var slice = pre_semicolon;
@@ -223,14 +237,15 @@ pub const HubOrEndPointIdentifier = struct {
                 // std.debug.print("dev.ports={any}\n", .{dev.ports()});
             }
 
-            var iface: u8 = undefined;
-            var endpoint: u8 = undefined;
-
             if (pre_semicolon.len == str.len) {
                 // There was no semicolon
                 dev.type = .hub;
+                return dev;
             } else {
                 dev.type = .endpoint;
+
+                var iface: u8 = undefined;
+                var endpoint: u8 = undefined;
 
                 const post_semicolon = str[(pre_semicolon.len + 1)..];
                 assert(post_semicolon.len >= 3);
@@ -242,12 +257,12 @@ pub const HubOrEndPointIdentifier = struct {
                 slice = try parseIntUpTo(slice, 0, u8, &endpoint);
 
                 assert(slice.len == 0);
+
+                dev.iface = iface;
+                dev.endpoint = endpoint;
+
+                return dev;
             }
-
-            dev.iface = iface;
-            dev.endpoint = endpoint;
-
-            return dev;
         }
     }
 };
