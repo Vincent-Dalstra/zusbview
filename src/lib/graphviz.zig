@@ -12,7 +12,7 @@ pub const Graph = struct {
     directed: bool = true,
 
     arena: std.heap.ArenaAllocator = undefined,
-    alloc: Allocator = undefined,
+    aalloc: Allocator = undefined,
 
     name: []const u8 = undefined,
 
@@ -23,13 +23,13 @@ pub const Graph = struct {
 
     pub fn init(self: *Graph, gpa: Allocator, name: []const u8) !void {
         self.arena = std.heap.ArenaAllocator.init(gpa); // Must use an arena allocator!
-        self.alloc = self.arena.allocator();
+        self.aalloc = self.arena.allocator();
 
-        self.name = try self.alloc.dupe(u8, name);
+        self.name = try self.aalloc.dupe(u8, name);
 
         // temporary fix; use a data structure that doesn't invalidate existing nodes/edges!
-        try self.nodes.ensureTotalCapacityPrecise(self.alloc, 1024);
-        try self.edges.ensureTotalCapacityPrecise(self.alloc, 1024);
+        try self.nodes.ensureTotalCapacityPrecise(self.aalloc, 1024);
+        try self.edges.ensureTotalCapacityPrecise(self.aalloc, 1024);
 
         assert(self.nodes.items.len == 0);
         assert(self.edges.items.len == 0);
@@ -40,9 +40,9 @@ pub const Graph = struct {
     }
 
     pub fn newNode(self: *Graph, name: []const u8) !*Node {
-        const new = try self.nodes.addOne(self.alloc);
+        const new = try self.nodes.addOne(self.aalloc);
         new.* = .{
-            .name = try self.alloc.dupe(u8, name),
+            .name = try self.aalloc.dupe(u8, name),
         };
         return new;
     }
@@ -65,7 +65,7 @@ pub const Graph = struct {
             .src = src,
             .dst = dst,
         };
-        try self.edges.append(self.alloc, new);
+        try self.edges.append(self.aalloc, new);
     }
 
     pub fn countEdge(self: *Graph, src: *Node, dst: *Node) usize {
@@ -85,9 +85,10 @@ pub const Graph = struct {
     }
 
     pub fn newCluster(self: *Graph, name: []const u8) !*Cluster {
-        const new = try self.clusters.addOne(self.alloc);
+        const new = try self.clusters.addOne(self.aalloc);
         new.* = .{
-            .name = try self.alloc.dupe(u8, name),
+            .name = try self.aalloc.dupe(u8, name),
+            .aalloc = self.aalloc,
         };
         return new;
     }
@@ -103,10 +104,6 @@ pub const Graph = struct {
 
     pub fn hasCluster(self: *Graph, name: []const u8) bool {
         return (self.findCluster(name) != null);
-    }
-
-    pub fn addNodeToCluster(self: *Graph, cluster: *Cluster, node: *Node) !void {
-        try cluster.nodes.append(self.alloc, node);
     }
 
     pub fn print(self: Graph, writer: *std.io.Writer) !void {
@@ -151,8 +148,13 @@ pub const Graph = struct {
     // Todo: rename to 'subgraph'
     pub const Cluster = struct {
         name: []const u8,
+        aalloc: Allocator, // same allocator as parent graph
 
         nodes: std.ArrayList(*Node) = .empty,
+
+        pub fn addNode(self: *Cluster, node: *Node) !void {
+            try self.nodes.append(self.aalloc, node);
+        }
 
         pub fn print(self: Cluster, writer: *std.io.Writer) !void {
             try writer.print(

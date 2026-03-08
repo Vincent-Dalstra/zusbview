@@ -165,7 +165,7 @@ pub fn program2(ctx: ProgramContext) !void {
 
                 const cluster_name = "cluster_" ++ serial.str;
                 const cluster = graph.findCluster(cluster_name) orelse try graph.newCluster(cluster_name);
-                try graph.addNodeToCluster(cluster, node);
+                try cluster.addNode(node);
             }
 
             const parent_id = id.parent() orelse continue;
