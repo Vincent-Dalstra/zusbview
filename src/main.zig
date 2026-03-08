@@ -158,13 +158,24 @@ pub fn program2(ctx: ProgramContext) !void {
             defer alloc.free(name);
             const node = graph.findNode(name) orelse try graph.newNode(name);
             //
-            const parent_id = id.parent() orelse continue;
 
-            const parent_name = try std.fmt.allocPrint(alloc, "{f}", .{parent_id});
-            defer alloc.free(parent_name);
-            const parent_node = graph.findNode(parent_name) orelse try graph.newNode(parent_name);
-            //
-            try graph.newEdge(parent_node, node);
+            if (id.type == .root_hub) {
+                const root_hub = entry.value_ptr.*.obj.root_hub;
+                const serial = root_hub.serial.?;
+
+                const cluster_name = "cluster_" ++ serial.str;
+                const cluster = graph.findCluster(cluster_name) orelse try graph.newCluster(cluster_name);
+                try graph.addNodeToCluster(cluster, node);
+            }
+
+            const parent_id = id.parent() orelse continue;
+            {
+                const parent_name = try std.fmt.allocPrint(alloc, "{f}", .{parent_id});
+                defer alloc.free(parent_name);
+                const parent_node = graph.findNode(parent_name) orelse try graph.newNode(parent_name);
+                //
+                try graph.newEdge(parent_node, node);
+            }
         }
 
         // ----
