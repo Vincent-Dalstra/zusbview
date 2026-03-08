@@ -84,7 +84,32 @@ pub const Graph = struct {
         return (self.countEdge(src, dst) > 0);
     }
 
-    pub fn print(self: *Graph, writer: *std.io.Writer) !void {
+    pub fn newCluster(self: *Graph, name: []const u8) !*Cluster {
+        const new = try self.clusters.addOne(self.alloc);
+        new.* = .{
+            .name = try self.alloc.dupe(u8, name),
+        };
+        return new;
+    }
+
+    pub fn findCluster(self: *Graph, name: []const u8) ?*Cluster {
+        for (self.clusters.items) |*cluster| {
+            if (std.mem.eql(u8, cluster.name, name)) {
+                return cluster;
+            }
+        }
+        return null;
+    }
+
+    pub fn hasCluster(self: *Graph, name: []const u8) bool {
+        return (self.findCluster(name) != null);
+    }
+
+    pub fn addNodeToCluster(self: *Graph, cluster: *Cluster, node: *Node) !void {
+        try cluster.nodes.append(self.alloc, node);
+    }
+
+    pub fn print(self: Graph, writer: *std.io.Writer) !void {
         try writer.print(
             "{s} \"{s}\" {{\n", // escaped '{'
             .{
@@ -92,6 +117,11 @@ pub const Graph = struct {
                 self.name,
             },
         );
+
+        for (self.clusters.items) |cluster| {
+            try cluster.print(writer);
+        }
+
         for (self.nodes.items) |node| {
             try writer.print("\"{s}\"\n", .{node.name});
         }
@@ -118,10 +148,32 @@ pub const Graph = struct {
         dst: *Node,
     };
 
+    // Todo: rename to 'subgraph'
     pub const Cluster = struct {
         name: []const u8,
 
-        nodes: std.ArrayList(Node) = .empty,
+        nodes: std.ArrayList(*Node) = .empty,
+
+        pub fn print(self: Cluster, writer: *std.io.Writer) !void {
+            try writer.print(
+                "{s} \"{s}\" {{\n", // escaped '{'
+                .{
+                    "subgraph",
+                    self.name,
+                },
+            );
+            try writer.print(
+                "{s}=\"{s}\"\n",
+                .{
+                    "label",
+                    "\\G", // graphviz programs interpret \G to mean the graphs ID (name)'
+                },
+            );
+            for (self.nodes.items) |node| {
+                try writer.print("\"{s}\"\n", .{node.name});
+            }
+            try writer.print("}}\n", .{}); // escaped '}'
+        }
     };
 };
 
@@ -154,7 +206,59 @@ test "export" {
     const written = std.mem.sliceTo(buf, 0);
 
     const expected =
-        \\digraph testGraph {
+        \\digraph "testGraph" {
+        \\"a"
+        \\"b"
+        \\"c"
+        \\"a" -> "b"
+        \\"a" -> "c"
+        \\"b" -> "c"
+        \\}
+        \\
+    ;
+
+    try std.testing.expectEqualStrings(expected, written);
+}
+
+test "export clusters" {
+    var graph: Graph = .{};
+    try graph.init(testAlloc, "testGraph");
+    defer graph.deinit();
+
+    _ = try graph.newNode("a");
+    _ = try graph.newNode("b");
+    _ = try graph.newNode("c");
+
+    const a = graph.findNode("a") orelse unreachable;
+    const b = graph.findNode("b") orelse unreachable;
+    const c = graph.findNode("c") orelse unreachable;
+
+    try graph.newEdge(a, b);
+    try graph.newEdge(a, c);
+    try graph.newEdge(b, c);
+
+    _ = try graph.newCluster("cluster_abba");
+    const abba = graph.findCluster("cluster_abba").?;
+
+    try graph.addNodeToCluster(abba, a);
+    try graph.addNodeToCluster(abba, b);
+
+    const buf: []u8 = try testAlloc.alloc(u8, (1024));
+    defer testAlloc.free(buf);
+    var writer = std.io.Writer.fixed(buf);
+
+    try graph.print(&writer);
+    try writer.flush();
+
+    const written = std.mem.sliceTo(buf, 0);
+
+    const expected =
+        \\digraph "testGraph" {
+        \\subgraph "cluster_abba" {
+        \\label="\G"
+        \\"a"
+        \\"b"
+        \\}
         \\"a"
         \\"b"
         \\"c"
