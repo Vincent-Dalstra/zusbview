@@ -62,6 +62,7 @@ const SYSFS_USB_PATH = "/sys/bus/usb/devices";
 var map_id_to_object: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbTypes.AnyObject) = undefined;
 // var map_id_to_parent: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, ?usbTypes.HubOrEndPointIdentifier) = undefined;
 var map_id_to_speed: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, usbTypes.SpeedClass) = undefined;
+var map_id_to_devnum: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, u7) = undefined;
 
 pub fn program(ctx: ProgramContext) !void {
     // Unpack
@@ -85,6 +86,8 @@ pub fn program(ctx: ProgramContext) !void {
     // defer map_id_to_parent.deinit();
     map_id_to_speed = .init(alloc);
     defer map_id_to_speed.deinit();
+    map_id_to_devnum = .init(alloc);
+    defer map_id_to_devnum.deinit();
 
     var usb_dir = try std.fs.openDirAbsolute(SYSFS_USB_PATH, .{ .iterate = true });
     defer usb_dir.close();
@@ -130,6 +133,10 @@ pub fn program(ctx: ProgramContext) !void {
         if (speed) |s| {
             try map_id_to_speed.putNoClobber(id, s);
         }
+
+        if (devnum) |d| {
+            try map_id_to_devnum.putNoClobber(id, d);
+        }
     }
 
     {
@@ -156,7 +163,9 @@ pub fn program(ctx: ProgramContext) !void {
 
             std.debug.print("id = {f} ({})", .{ id, @intFromEnum(id.type) });
 
-            const name = try std.fmt.allocPrint(alloc, "{f}", .{id});
+            const name = try nameFromId(alloc, id);
+            defer alloc.free(name);
+
             defer alloc.free(name);
             const node = graph.findNode(name) orelse try graph.newNode(name);
             //
@@ -187,7 +196,7 @@ pub fn program(ctx: ProgramContext) !void {
             std.debug.print("  parent = {f}\n", .{parent_id});
 
             {
-                const parent_name = try std.fmt.allocPrint(alloc, "{f}", .{parent_id});
+                const parent_name = try nameFromId(alloc, parent_id);
                 defer alloc.free(parent_name);
                 const parent_node = graph.findNode(parent_name) orelse try graph.newNode(parent_name);
 
@@ -202,6 +211,16 @@ pub fn program(ctx: ProgramContext) !void {
     }
 
     return;
+}
+
+fn nameFromId(gpa: Allocator, id: usbTypes.HubOrEndPointIdentifier) ![]u8 {
+    const devnum = map_id_to_devnum.get(id);
+
+    if (devnum) |d| {
+        return std.fmt.allocPrint(gpa, "{f}\n({})", .{ id, d });
+    } else {
+        return std.fmt.allocPrint(gpa, "{f}", .{id});
+    }
 }
 
 fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.Entry) !struct {
@@ -270,23 +289,21 @@ fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.
                 }
             } else if (std.mem.eql(u8, "devnum", entry2.name)) {
                 std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
-                if (id.type == .hub or id.type == .root_hub) {
-                    assert(entry2.kind == .file);
+                assert(entry2.kind == .file);
 
-                    const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
-                        std.debug.print("{any}\n", .{err});
-                        continue;
-                    };
-                    defer alloc.free(raw_data);
+                const raw_data = dev_dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
+                    std.debug.print("{any}\n", .{err});
+                    continue;
+                };
+                defer alloc.free(raw_data);
 
-                    // On linux at least, this file ends with a newline, and parseInt() doesn't like that
-                    const data = std.mem.trimEnd(u8, raw_data, "\r\n");
+                // On linux at least, this file ends with a newline, and parseInt() doesn't like that
+                const data = std.mem.trimEnd(u8, raw_data, "\r\n");
 
-                    // std.debug.print("{s}\n", .{data});
-                    // std.debug.print("0x{x}\n", .{data});
+                // std.debug.print("devnum='{s}'\n", .{data});
+                // std.debug.print("0x{x}\n", .{data});
 
-                    devnum = try std.fmt.parseUnsigned(u7, data, 10);
-                }
+                devnum = try std.fmt.parseUnsigned(u7, data, 10);
             } else if (std.mem.eql(u8, "maxchild", entry2.name)) {
                 std.debug.print("{s}/{s} {any}\n", .{ entry.name, entry2.name, entry2.kind });
                 if (id.type == .hub or id.type == .root_hub) {
@@ -301,7 +318,7 @@ fn processDeviceDir(ctx: ProgramContext, usb_dir: std.fs.Dir, entry: std.fs.Dir.
                     // On linux at least, this file ends with a newline, and parseInt() doesn't like that
                     const data = std.mem.trimEnd(u8, raw_data, "\r\n");
 
-                    // std.debug.print("{s}\n", .{data});
+                    // std.debug.print("maxchild='{s}'\n", .{data});
                     // std.debug.print("0x{x}\n", .{data});
 
                     const maxchild = try std.fmt.parseUnsigned(u8, data, 10);
