@@ -120,7 +120,11 @@ pub const Graph = struct {
         }
 
         for (self.nodes.items) |node| {
-            try writer.print("\"{s}\"\n", .{node.name});
+            if (node.shape) |s| {
+                try writer.print("\"{s}\" [shape=\"{s}\"]\n", .{ node.name, s.asString() });
+            } else {
+                try writer.print("\"{s}\"\n", .{node.name});
+            }
         }
         for (self.edges.items) |edge| {
             try writer.print(
@@ -138,6 +142,46 @@ pub const Graph = struct {
 
     pub const Node = struct {
         name: []const u8,
+
+        shape: ?Shape = null,
+
+        const Shape = enum {
+            ellipse,
+            box,
+            circle,
+            diamond,
+            triangle,
+            invtriangle,
+            trapezium,
+            invtrapezium,
+            hexagon,
+            house,
+            invhouse,
+            star,
+
+            pentagon,
+            hexagn,
+            septagon,
+            octagon,
+
+            cylinder,
+            box3d,
+
+            note,
+            tab,
+            folder,
+
+            // not exhaustive (yet) - see https://graphviz.org/doc/info/shapes.html#polygon
+
+            pub fn asString(self: Shape) []const u8 {
+                return @tagName(self);
+            }
+            test asString {
+                try std.testing.expectEqualStrings("ellipse", Shape.ellipse.asString());
+                try std.testing.expectEqualStrings("box", Shape.box.asString());
+                try std.testing.expectEqualStrings("house", Shape.house.asString());
+            }
+        };
     };
 
     pub const Edge = struct {
@@ -242,8 +286,8 @@ test "export clusters" {
     _ = try graph.newCluster("cluster_abba");
     const abba = graph.findCluster("cluster_abba").?;
 
-    try graph.addNodeToCluster(abba, a);
-    try graph.addNodeToCluster(abba, b);
+    try abba.addNode(a);
+    try abba.addNode(b);
 
     const buf: []u8 = try testAlloc.alloc(u8, (1024));
     defer testAlloc.free(buf);
@@ -264,6 +308,47 @@ test "export clusters" {
         \\"a"
         \\"b"
         \\"c"
+        \\"a" -> "b"
+        \\"a" -> "c"
+        \\"b" -> "c"
+        \\}
+        \\
+    ;
+
+    try std.testing.expectEqualStrings(expected, written);
+}
+
+test "set different shapes" {
+    var graph: Graph = .{};
+    try graph.init(testAlloc, "testGraph");
+    defer graph.deinit();
+
+    const a = try graph.newNode("a");
+    const b = try graph.newNode("b");
+    const c = try graph.newNode("c");
+
+    a.shape = .box;
+    b.shape = .house;
+    c.shape = .ellipse; // ellipse is default for .dot
+
+    try graph.newEdge(a, b);
+    try graph.newEdge(a, c);
+    try graph.newEdge(b, c);
+
+    const buf: []u8 = try testAlloc.alloc(u8, (1024));
+    defer testAlloc.free(buf);
+    var writer = std.io.Writer.fixed(buf);
+
+    try graph.print(&writer);
+    try writer.flush();
+
+    const written = std.mem.sliceTo(buf, 0);
+
+    const expected =
+        \\digraph "testGraph" {
+        \\"a" [shape="box"]
+        \\"b" [shape="house"]
+        \\"c" [shape="ellipse"]
         \\"a" -> "b"
         \\"a" -> "c"
         \\"b" -> "c"
