@@ -168,7 +168,15 @@ pub fn program(ctx: ProgramContext) !void {
 
             defer alloc.free(name);
             const node = graph.findNode(name) orelse try graph.newNode(name);
-            //
+
+            // Shape indicates type
+            node.shape = switch (id.type) {
+                .root_hub => .house,
+                .hub => .diamond,
+                .device => .box,
+                .endpoint => .invhouse,
+                // else => .star, // indicates an error
+            };
 
             // if (id.type == .root_hub) {
             //     const root_hub = entry.value_ptr.*.obj.root_hub;
