@@ -132,7 +132,7 @@ pub const SpeedClass = enum(c_int) {
 };
 
 pub const HubOrEndPointIdentifier = struct {
-    type: AnyObjectType,
+    type: ?AnyObjectType = null,
 
     bus: u8,
     // See fn ports(), which returns these two as a slice for convenience
@@ -146,10 +146,28 @@ pub const HubOrEndPointIdentifier = struct {
         return self.ports_buffer[0..self.ports_len];
     }
 
+    // Determine type based on the configured values. If indeterminate, returns null
+    pub fn infer_type(self: HubOrEndPointIdentifier) ?AnyObjectType {
+        if (self.ports_len == 0) {
+            assert(self.iface == null);
+            assert(self.endpoint == null);
+            return .root_hub;
+        }
+        if (self.iface == null) {
+            assert(self.endpoint == null);
+            // Could be hub or device
+            return null;
+        }
+        // if (self.endpoint == null) {
+        //     return .iface;
+        // }
+        return .endpoint;
+    }
+
     pub fn parent(self: HubOrEndPointIdentifier) ?HubOrEndPointIdentifier {
-        switch (self.type) {
+        switch (self.type.?) {
             .root_hub => return null,
-            .hub => {
+            .hub, .device => {
                 assert(self.ports_len > 0);
                 if (self.ports_len == 1) {
                     return .{
@@ -162,20 +180,6 @@ pub const HubOrEndPointIdentifier = struct {
                     parent_object.ports_len -= 1;
                     return parent_object;
                 }
-            },
-            .device => {
-                var parent_object = self;
-                parent_object.type = .hub;
-                parent_object.ports_buffer[self.ports_len - 1] = 0;
-                parent_object.ports_len -= 1;
-
-                if (parent_object.ports_len == 0) {
-                    return .{
-                        .type = .root_hub,
-                        .bus = self.bus,
-                    };
-                }
-                return parent_object;
             },
             .endpoint => {
                 // The endpoint for a root hub is a little weird
@@ -233,7 +237,6 @@ pub const HubOrEndPointIdentifier = struct {
             };
         } else {
             var dev: HubOrEndPointIdentifier = .{
-                .type = undefined,
                 .bus = undefined,
             };
 
@@ -260,7 +263,8 @@ pub const HubOrEndPointIdentifier = struct {
 
             if (pre_semicolon.len == str.len) {
                 // There was no semicolon
-                dev.type = .hub;
+                // Could be a hub or a device
+                dev.type = null;
                 return dev;
             } else {
                 dev.type = .endpoint;

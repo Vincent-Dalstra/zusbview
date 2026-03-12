@@ -4,6 +4,7 @@ const assert = std.debug.assert;
 
 const zusbview = @import("zusbview");
 const usbTypes = zusbview.usbTypes;
+const usbExtractInfo = zusbview.usbExtractInfo;
 const graphviz = zusbview.graphviz;
 
 const usb_max_tiers = usbTypes.usb_max_tiers;
@@ -96,46 +97,50 @@ pub fn program(ctx: ProgramContext) !void {
     while (try usb_dir_it.next()) |entry| {
         std.debug.print("Next entry: {s}/{s} {any}\n", .{ SYSFS_USB_PATH, entry.name, entry.kind });
 
-        const obj_type, const id, const speed, const serial, const devnum = try processDeviceDir(ctx, usb_dir, entry);
+        // Open the directory representing the device
+        var dev_dir = try usb_dir.openDir(entry.name, .{ .iterate = true });
+        defer dev_dir.close();
+
+        const obj = try usbExtractInfo.usbExtractInfo(entry.name, dev_dir);
 
         const object: *usbTypes.AnyObject = try object_pool.create();
-        object.id = id;
-        switch (obj_type) {
+        object.id = obj.parsed.id;
+        switch (obj.inferred.type) {
             .root_hub => {
                 const temp: usbTypes.RootHub = .{
-                    .id = id,
-                    .speed = speed,
-                    .serial = serial,
-                    .devnum = devnum.?,
+                    .id = obj.parsed.id,
+                    .speed = obj.parsed.speed,
+                    .serial = obj.parsed.serial,
+                    .devnum = obj.parsed.devnum.?,
                 };
                 object.obj = .{ .root_hub = temp };
             },
             .hub => {
                 const temp: usbTypes.Hub = .{
-                    .id = id,
-                    .devnum = devnum.?,
-                    .speed = speed,
+                    .id = obj.parsed.id,
+                    .devnum = obj.parsed.devnum.?,
+                    .speed = obj.parsed.speed,
                 };
                 object.obj = .{ .hub = temp };
             },
+            .device => {},
             .endpoint => {
                 const temp: usbTypes.Endpoint = .{
-                    .id = id,
-                    .speed = speed,
+                    .id = obj.parsed.id,
+                    .speed = obj.parsed.speed,
                 };
                 object.obj = .{ .endpoint = temp };
             },
-            else => unreachable,
         }
 
         // No two USB devices should have the id or devnum
-        try map_id_to_object.putNoClobber(id, object);
-        if (speed) |s| {
-            try map_id_to_speed.putNoClobber(id, s);
+        try map_id_to_object.putNoClobber(obj.parsed.id, object);
+        if (obj.parsed.speed) |s| {
+            try map_id_to_speed.putNoClobber(obj.parsed.id, s);
         }
 
-        if (devnum) |d| {
-            try map_id_to_devnum.putNoClobber(id, d);
+        if (obj.parsed.devnum) |d| {
+            try map_id_to_devnum.putNoClobber(obj.parsed.id, d);
         }
     }
 
@@ -161,7 +166,7 @@ pub fn program(ctx: ProgramContext) !void {
                 }
             }
 
-            std.debug.print("id = {f} ({})", .{ id, @intFromEnum(id.type) });
+            std.debug.print("id = {f} ({})", .{ id, @intFromEnum(id.type.?) });
 
             const name = try nameFromId(alloc, id);
             defer alloc.free(name);
@@ -170,7 +175,7 @@ pub fn program(ctx: ProgramContext) !void {
             const node = graph.findNode(name) orelse try graph.newNode(name);
 
             // Shape indicates type
-            node.shape = switch (id.type) {
+            node.shape = switch (id.type.?) {
                 .root_hub => .house,
                 .hub => .diamond,
                 .device => .box,
