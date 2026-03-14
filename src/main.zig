@@ -65,6 +65,8 @@ var map_id_to_object: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbType
 var map_id_to_speed: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, usbTypes.SpeedClass) = undefined;
 var map_id_to_devnum: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, u7) = undefined;
 
+var map_id_to_info: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbExtractInfo.UsbObjectInfo) = undefined;
+
 pub fn program(ctx: ProgramContext) !void {
     // Unpack
     const alloc = ctx.alloc;
@@ -76,6 +78,9 @@ pub fn program(ctx: ProgramContext) !void {
 
     var object_pool: std.heap.MemoryPool(usbTypes.AnyObject) = .init(alloc);
     defer object_pool.deinit();
+
+    var obj_pool: std.heap.MemoryPool(usbExtractInfo.UsbObjectInfo) = .init(alloc);
+    defer obj_pool.deinit();
 
     // map_devnum_to_id = .init(alloc);
     // defer map_devnum_to_id.deinit();
@@ -89,6 +94,8 @@ pub fn program(ctx: ProgramContext) !void {
     defer map_id_to_speed.deinit();
     map_id_to_devnum = .init(alloc);
     defer map_id_to_devnum.deinit();
+    map_id_to_info = .init(alloc);
+    defer map_id_to_info.deinit();
 
     var usb_dir = try std.fs.openDirAbsolute(SYSFS_USB_PATH, .{ .iterate = true });
     defer usb_dir.close();
@@ -101,7 +108,10 @@ pub fn program(ctx: ProgramContext) !void {
         var dev_dir = try usb_dir.openDir(entry.name, .{ .iterate = true });
         defer dev_dir.close();
 
-        const obj = try usbExtractInfo.usbExtractInfo(entry.name, dev_dir);
+        const obj: *usbExtractInfo.UsbObjectInfo = try obj_pool.create();
+        obj.* = try usbExtractInfo.usbExtractInfo(entry.name, dev_dir);
+
+        try map_id_to_info.putNoClobber(obj.parsed.id, obj);
 
         const object: *usbTypes.AnyObject = try object_pool.create();
         object.id = obj.parsed.id;
@@ -153,9 +163,11 @@ pub fn program(ctx: ProgramContext) !void {
 
         // ----
 
-        var usb_obj_it = map_id_to_object.iterator();
+        var usb_obj_it = map_id_to_info.iterator();
         while (usb_obj_it.next()) |entry| {
-            const id = entry.value_ptr.*.id;
+            const obj = entry.value_ptr.*;
+            const id = obj.parsed.id;
+            // assert(id == entry.key_ptr.*);
 
             // Every hub and root_hub has an endpoint associated with it; not important to draw
             if (id.type == .endpoint) {
@@ -165,6 +177,7 @@ pub fn program(ctx: ProgramContext) !void {
                     }
                 }
             }
+            defer std.debug.print("\n", .{});
 
             std.debug.print("id = {f} ({})", .{ id, @intFromEnum(id.type.?) });
 
@@ -206,7 +219,7 @@ pub fn program(ctx: ProgramContext) !void {
             }
 
             const parent_id = id.parent() orelse continue;
-            std.debug.print("  parent = {f}\n", .{parent_id});
+            std.debug.print("  parent = {f}", .{parent_id});
 
             {
                 const parent_name = try nameFromId(alloc, parent_id);
@@ -227,9 +240,9 @@ pub fn program(ctx: ProgramContext) !void {
 }
 
 fn nameFromId(gpa: Allocator, id: usbTypes.HubOrEndPointIdentifier) ![]u8 {
-    const devnum = map_id_to_devnum.get(id);
+    const obj = map_id_to_info.get(id).?;
 
-    if (devnum) |d| {
+    if (obj.parsed.devnum) |d| {
         return std.fmt.allocPrint(gpa, "{f}\n({})", .{ id, d });
     } else {
         return std.fmt.allocPrint(gpa, "{f}", .{id});

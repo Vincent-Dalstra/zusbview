@@ -178,6 +178,8 @@ pub const HubOrEndPointIdentifier = struct {
                     var parent_object = self;
                     parent_object.ports_buffer[self.ports_len - 1] = 0;
                     parent_object.ports_len -= 1;
+                    parent_object.type = .hub;
+
                     return parent_object;
                 }
             },

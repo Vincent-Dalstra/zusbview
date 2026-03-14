@@ -6,7 +6,7 @@ const usbTypes = @import("../root.zig").usbTypes;
 
 const usb_max_tiers = usbTypes.usb_max_tiers;
 
-const UsbObjectInfo = struct {
+pub const UsbObjectInfo = struct {
     parsed: struct {
         id: usbTypes.HubOrEndPointIdentifier, // Determined from the 'directory name'
         speed: ?usbTypes.SpeedClass = null,
