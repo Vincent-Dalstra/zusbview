@@ -218,6 +218,14 @@ pub fn program(ctx: ProgramContext) !void {
                 try cluster.addNode(node);
             }
 
+            if (obj.inferred.type == .root_hub) {
+                // Add a node for the PCI serial number
+                const parent_name = "PCI\n" ++ obj.parsed.serial.?.str;
+                const parent_node = graph.findNode(parent_name) orelse try graph.newNode(parent_name);
+
+                try graph.newEdge(parent_node, node);
+            }
+
             const parent_id = id.parent() orelse continue;
             std.debug.print("  parent = {f}", .{parent_id});
 
