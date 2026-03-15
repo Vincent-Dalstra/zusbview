@@ -90,7 +90,7 @@ pub fn program(ctx: ProgramContext) !void {
         defer dev_dir.close();
 
         const obj: *usbExtractInfo.UsbObjectInfo = try obj_pool.create();
-        obj.* = try usbExtractInfo.usbExtractInfo(entry.name, dev_dir);
+        obj.* = try usbExtractInfo.usbExtractInfo(entry.name, dev_dir, aalloc);
 
         try map_id_to_info.putNoClobber(obj.parsed.id, obj);
     }

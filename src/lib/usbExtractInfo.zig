@@ -13,6 +13,9 @@ pub const UsbObjectInfo = struct {
         serial: ?usbTypes.PciBdfNumber = null,
         devnum: ?u7 = null,
         maxchild: ?u8 = null,
+
+        manufacturer: ?[]u8 = null,
+        product: ?[]u8 = null,
     },
     inferred: struct {
         type: usbTypes.AnyObjectType,
@@ -35,12 +38,14 @@ pub const UsbObjectInfo = struct {
         try writer.print("{s} = {f}\n", .{ "type", self.inferred.type });
         if (self.parsed.maxchild) |maxchild| try writer.print("{s} = {}\n", .{ "maxchild", maxchild });
         if (self.parsed.speed) |speed| try writer.print("{s} = {}\n", .{ "speed", speed });
+        if (self.parsed.manufacturer) |manufacturer| try writer.print("{s} = {s}\n", .{ "manufacturer", manufacturer });
+        if (self.parsed.product) |product| try writer.print("{s} = {s}\n", .{ "product", product });
 
         writer.undo(1); // Remove last \n
     }
 };
 
-pub fn usbExtractInfo(dirname: []const u8, dir: std.fs.Dir) !UsbObjectInfo {
+pub fn usbExtractInfo(dirname: []const u8, dir: std.fs.Dir, string_alloc: Allocator) !UsbObjectInfo {
     var alloc_buffer: [128]u8 = undefined; // Should be more than sufficient
     var buf_allocator: std.heap.FixedBufferAllocator = .init(&alloc_buffer);
     const alloc = buf_allocator.allocator();
@@ -92,6 +97,10 @@ pub fn usbExtractInfo(dirname: []const u8, dir: std.fs.Dir) !UsbObjectInfo {
         } else if (std.mem.eql(u8, "maxchild", entry2.name)) {
             std.debug.print("{s}/{s} {any}\n", .{ dirname, entry2.name, entry2.kind });
             obj.parsed.maxchild = try std.fmt.parseUnsigned(u8, data.?, 10);
+        } else if (std.mem.eql(u8, "manufacturer", entry2.name)) {
+            obj.parsed.manufacturer = try string_alloc.dupe(u8, data.?);
+        } else if (std.mem.eql(u8, "product", entry2.name)) {
+            obj.parsed.product = try string_alloc.dupe(u8, data.?);
         }
     }
 
