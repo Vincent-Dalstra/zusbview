@@ -60,87 +60,43 @@ pub fn usbExtractInfo(dirname: []const u8, dir: std.fs.Dir) !UsbObjectInfo {
 
     var dir_it = dir.iterateAssumeFirstIteration();
     while (try dir_it.next()) |entry2| {
+        if (entry2.kind != .file) {
+            continue;
+        }
+
+        var raw_data: ?[]u8 = null;
+        defer if (raw_data) |p| alloc.free(p);
+        if (entry2.kind == .file) {
+            raw_data = dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
+                std.debug.print("{any}\n", .{err});
+                continue;
+            };
+        }
+        // On linux at least, the files ends with a newline, and parseInt() doesn't like that
+        const data = if (raw_data) |d| std.mem.trimEnd(u8, d, "\r\n") else null;
+
         std.debug.print("{s}/{s} {any}\n", .{ dirname, entry2.name, entry2.kind });
         if (std.mem.eql(u8, "speed", entry2.name)) {
-            assert(entry2.kind == .file);
-
-            const raw_data = dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
-                std.debug.print("{any}\n", .{err});
-                continue;
-            };
-            defer alloc.free(raw_data);
-
-            // On linux at least, this file ends with a newline, and parseInt() doesn't like that
-            const data = std.mem.trimEnd(u8, raw_data, "\r\n");
-
-            obj.parsed.speed = try .fromStringMbps(data);
+            obj.parsed.speed = try .fromStringMbps(data.?);
             std.debug.print("speed = {}\n", .{obj.parsed.speed.?.inMbps()});
         } else if (std.mem.eql(u8, "serial", entry2.name)) {
-            assert(entry2.kind == .file);
-
-            const raw_data = dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
-                std.debug.print("{any}\n", .{err});
-                continue;
-            };
-            defer alloc.free(raw_data);
-
-            // On linux at least, this file ends with a newline, and parseInt() doesn't like that
-            const data = std.mem.trimEnd(u8, raw_data, "\r\n");
-
-            std.debug.print("dirname={s}\nserial={s}", .{ dirname, data });
-
             // If it's a root hub, this will be a PCI number
             if (obj.parsed.id.type == .root_hub) {
                 var temp: usbTypes.PciBdfNumber = undefined;
-                @memcpy(temp.str[0..data.len], data);
+                @memcpy(temp.str[0..data.?.len], data.?);
                 obj.parsed.serial = temp;
             }
         } else if (std.mem.eql(u8, "devnum", entry2.name)) {
             std.debug.print("{s}/{s} {any}\n", .{ dirname, entry2.name, entry2.kind });
-            assert(entry2.kind == .file);
-
-            const raw_data = dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
-                std.debug.print("{any}\n", .{err});
-                continue;
-            };
-            defer alloc.free(raw_data);
-
-            // On linux at least, this file ends with a newline, and parseInt() doesn't like that
-            const data = std.mem.trimEnd(u8, raw_data, "\r\n");
-
-            obj.parsed.devnum = try std.fmt.parseUnsigned(u7, data, 10);
+            obj.parsed.devnum = try std.fmt.parseUnsigned(u7, data.?, 10);
         } else if (std.mem.eql(u8, "maxchild", entry2.name)) {
             std.debug.print("{s}/{s} {any}\n", .{ dirname, entry2.name, entry2.kind });
-            assert(entry2.kind == .file);
-
-            const raw_data = dir.readFileAlloc(alloc, entry2.name, 100) catch |err| {
-                std.debug.print("{any}\n", .{err});
-                continue;
-            };
-            defer alloc.free(raw_data);
-            // On linux at least, this file ends with a newline, and parseInt() doesn't like that
-            const data = std.mem.trimEnd(u8, raw_data, "\r\n");
-
-            obj.parsed.maxchild = try std.fmt.parseUnsigned(u8, data, 10);
+            obj.parsed.maxchild = try std.fmt.parseUnsigned(u8, data.?, 10);
         }
     }
 
     // Devices and Hubs are ambiguous, so we need to infer them.
     obj = obj.infer();
-
-    // Checks
-    // switch (obj.inferred.type) {
-    //     .root_hub => {
-    //         assert(obj.parsed.serial != null);
-    //     },
-    //     .hub => {
-    //         assert(obj.parsed.devnum.? > 0);
-    //         assert(obj.parsed.maxchild.? > 0);
-    //     },
-    //     .device => {
-    //         assert(obj.parsed.devnum.? != 0);
-    //     },
-    // }
 
     return obj;
 }

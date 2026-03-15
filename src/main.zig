@@ -118,9 +118,8 @@ pub fn program(ctx: ProgramContext) !void {
                     }
                 }
             }
-            defer std.debug.print("\n", .{});
-
-            std.debug.print("id = {f} ({})", .{ id, @intFromEnum(id.type.?) });
+            // defer std.debug.print("\n", .{});
+            // std.debug.print("id = {f} ({})", .{ id, @intFromEnum(id.type.?) });
 
             const name = try nameFromId(alloc, obj);
             defer alloc.free(name);
@@ -168,7 +167,7 @@ pub fn program(ctx: ProgramContext) !void {
             }
 
             const parent_id = id.parent() orelse continue;
-            std.debug.print("  parent = {f}", .{parent_id});
+            // std.debug.print("  parent = {f}", .{parent_id});
 
             {
                 const parent_obj = map_id_to_info.get(parent_id).?;
