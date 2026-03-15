@@ -59,11 +59,7 @@ pub fn main() !void {
 const SYSFS_USB_PATH = "/sys/bus/usb/devices";
 
 // var map_devnum_to_id: std.AutoHashMap(usbTypes.UniqueDeviceId, *usbTypes.HubOrEndPointIdentifier) = .empty;
-// var map_id_to_devnum: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbTypes.UniqueDeviceId) = .empty;
 var map_id_to_object: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbTypes.AnyObject) = undefined;
-// var map_id_to_parent: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, ?usbTypes.HubOrEndPointIdentifier) = undefined;
-var map_id_to_speed: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, usbTypes.SpeedClass) = undefined;
-var map_id_to_devnum: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, u7) = undefined;
 
 var map_id_to_info: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbExtractInfo.UsbObjectInfo) = undefined;
 
@@ -76,24 +72,9 @@ pub fn program(ctx: ProgramContext) !void {
     defer arena.deinit();
     const aalloc = arena.allocator();
 
-    var object_pool: std.heap.MemoryPool(usbTypes.AnyObject) = .init(alloc);
-    defer object_pool.deinit();
-
     var obj_pool: std.heap.MemoryPool(usbExtractInfo.UsbObjectInfo) = .init(alloc);
     defer obj_pool.deinit();
 
-    // map_devnum_to_id = .init(alloc);
-    // defer map_devnum_to_id.deinit();
-    // map_id_to_devnum = .init(alloc);
-    // defer map_id_to_devnum.deinit();
-    map_id_to_object = .init(alloc);
-    defer map_id_to_object.deinit();
-    // map_id_to_parent = .init(alloc);
-    // defer map_id_to_parent.deinit();
-    map_id_to_speed = .init(alloc);
-    defer map_id_to_speed.deinit();
-    map_id_to_devnum = .init(alloc);
-    defer map_id_to_devnum.deinit();
     map_id_to_info = .init(alloc);
     defer map_id_to_info.deinit();
 
@@ -112,46 +93,6 @@ pub fn program(ctx: ProgramContext) !void {
         obj.* = try usbExtractInfo.usbExtractInfo(entry.name, dev_dir);
 
         try map_id_to_info.putNoClobber(obj.parsed.id, obj);
-
-        const object: *usbTypes.AnyObject = try object_pool.create();
-        object.id = obj.parsed.id;
-        switch (obj.inferred.type) {
-            .root_hub => {
-                const temp: usbTypes.RootHub = .{
-                    .id = obj.parsed.id,
-                    .speed = obj.parsed.speed,
-                    .serial = obj.parsed.serial,
-                    .devnum = obj.parsed.devnum.?,
-                };
-                object.obj = .{ .root_hub = temp };
-            },
-            .hub => {
-                const temp: usbTypes.Hub = .{
-                    .id = obj.parsed.id,
-                    .devnum = obj.parsed.devnum.?,
-                    .speed = obj.parsed.speed,
-                };
-                object.obj = .{ .hub = temp };
-            },
-            .device => {},
-            .endpoint => {
-                const temp: usbTypes.Endpoint = .{
-                    .id = obj.parsed.id,
-                    .speed = obj.parsed.speed,
-                };
-                object.obj = .{ .endpoint = temp };
-            },
-        }
-
-        // No two USB devices should have the id or devnum
-        try map_id_to_object.putNoClobber(obj.parsed.id, object);
-        if (obj.parsed.speed) |s| {
-            try map_id_to_speed.putNoClobber(obj.parsed.id, s);
-        }
-
-        if (obj.parsed.devnum) |d| {
-            try map_id_to_devnum.putNoClobber(obj.parsed.id, d);
-        }
     }
 
     {
@@ -205,8 +146,8 @@ pub fn program(ctx: ProgramContext) !void {
             //     try cluster.addNode(node);
             // }
 
-            var speed = map_id_to_speed.get(id);
-            if (speed == null) speed = map_id_to_speed.get(id.parent().?);
+            var speed = obj.parsed.speed;
+            if (speed == null) speed = map_id_to_info.get(id.parent().?).?.parsed.speed.?;
 
             // const speed = map_id_to_speed.get(id).?;
             if (speed) |s| {
