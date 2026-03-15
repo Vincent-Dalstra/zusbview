@@ -27,6 +27,17 @@ pub const UsbObjectInfo = struct {
 
         return ret;
     }
+
+    /// Creates the same names as found in  '/sys/bus/usb/devices'
+    pub fn format(self: UsbObjectInfo, writer: *std.io.Writer) !void {
+        try writer.print("{f}\n", .{self.parsed.id});
+        if (self.parsed.devnum) |devnum| try writer.print("{s} = {}\n", .{ "devnum", devnum });
+        try writer.print("{s} = {f}\n", .{ "type", self.inferred.type });
+        if (self.parsed.maxchild) |maxchild| try writer.print("{s} = {}\n", .{ "maxchild", maxchild });
+        if (self.parsed.speed) |speed| try writer.print("{s} = {}\n", .{ "speed", speed });
+
+        writer.undo(1); // Remove last \n
+    }
 };
 
 pub fn usbExtractInfo(dirname: []const u8, dir: std.fs.Dir) !UsbObjectInfo {

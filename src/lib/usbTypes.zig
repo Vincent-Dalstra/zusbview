@@ -39,6 +39,10 @@ pub const AnyObjectType = enum {
     hub,
     device,
     endpoint,
+
+    pub fn format(self: AnyObjectType, writer: *std.io.Writer) !void {
+        return writer.print("{s}", .{@tagName(self)});
+    }
 };
 
 pub const AnyObjectEnum = union(AnyObjectType) {

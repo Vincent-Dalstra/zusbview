@@ -122,7 +122,7 @@ pub fn program(ctx: ProgramContext) !void {
 
             std.debug.print("id = {f} ({})", .{ id, @intFromEnum(id.type.?) });
 
-            const name = try nameFromId(alloc, id);
+            const name = try nameFromId(alloc, obj);
             defer alloc.free(name);
 
             defer alloc.free(name);
@@ -171,7 +171,9 @@ pub fn program(ctx: ProgramContext) !void {
             std.debug.print("  parent = {f}", .{parent_id});
 
             {
-                const parent_name = try nameFromId(alloc, parent_id);
+                const parent_obj = map_id_to_info.get(parent_id).?;
+
+                const parent_name = try nameFromId(alloc, parent_obj);
                 defer alloc.free(parent_name);
                 const parent_node = graph.findNode(parent_name) orelse try graph.newNode(parent_name);
 
@@ -188,14 +190,8 @@ pub fn program(ctx: ProgramContext) !void {
     return;
 }
 
-fn nameFromId(gpa: Allocator, id: usbTypes.HubOrEndPointIdentifier) ![]u8 {
-    const obj = map_id_to_info.get(id).?;
-
-    if (obj.parsed.devnum) |d| {
-        return std.fmt.allocPrint(gpa, "{f}\n({})", .{ id, d });
-    } else {
-        return std.fmt.allocPrint(gpa, "{f}", .{id});
-    }
+fn nameFromId(gpa: Allocator, obj: *const usbExtractInfo.UsbObjectInfo) ![]u8 {
+    return try std.fmt.allocPrint(gpa, "{f}", .{obj.*});
 }
 
 fn grabLine(reader: *std.io.Reader) ?[]u8 {
