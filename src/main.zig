@@ -110,7 +110,7 @@ pub fn program(ctx: ProgramContext) !void {
             const id = obj.parsed.id;
             // assert(id == entry.key_ptr.*);
 
-            // Every hub and root_hub has an endpoint associated with it; not important to draw
+            // Every device, hub and root_hub has an endpoint associated with it; not important to draw
             if (id.type == .endpoint) {
                 if (id.iface == 1) {
                     if (id.endpoint == 0) {
