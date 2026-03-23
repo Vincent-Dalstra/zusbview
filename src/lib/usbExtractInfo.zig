@@ -24,9 +24,8 @@ pub const UsbObjectInfo = struct {
     pub fn infer(self: UsbObjectInfo) UsbObjectInfo {
         var ret = self;
         ret.inferred = .{
-            .type = self.parsed.id.type orelse if (self.parsed.maxchild == 0) .device else .hub,
+            .type = self.parsed.id.id_type().infer() orelse if (self.parsed.maxchild == 0) .device else .hub,
         };
-        ret.parsed.id.type = ret.inferred.type; // Reapply to the id, so its consistent
 
         return ret;
     }
@@ -69,6 +68,7 @@ pub fn usbExtractInfo(dirname: []const u8, dir: std.fs.Dir, string_alloc: Alloca
             continue;
         }
 
+        std.debug.print("{s}/{s} {any}\n", .{ dirname, entry2.name, entry2.kind });
         var raw_data: ?[]u8 = null;
         defer if (raw_data) |p| alloc.free(p);
         if (entry2.kind == .file) {
@@ -80,13 +80,12 @@ pub fn usbExtractInfo(dirname: []const u8, dir: std.fs.Dir, string_alloc: Alloca
         // On linux at least, the files ends with a newline, and parseInt() doesn't like that
         const data = if (raw_data) |d| std.mem.trimEnd(u8, d, "\r\n") else null;
 
-        std.debug.print("{s}/{s} {any}\n", .{ dirname, entry2.name, entry2.kind });
         if (std.mem.eql(u8, "speed", entry2.name)) {
             obj.parsed.speed = try .fromStringMbps(data.?);
             std.debug.print("speed = {}\n", .{obj.parsed.speed.?.inMbps()});
         } else if (std.mem.eql(u8, "serial", entry2.name)) {
             // If it's a root hub, this will be a PCI number
-            if (obj.parsed.id.type == .root_hub) {
+            if (obj.parsed.id.id_type() == .root_hub) {
                 var temp: usbTypes.PciBdfNumber = undefined;
                 @memcpy(temp.str[0..data.?.len], data.?);
                 obj.parsed.serial = temp;

@@ -136,8 +136,6 @@ pub const SpeedClass = enum(c_int) {
 };
 
 pub const HubOrEndPointIdentifier = struct {
-    type: ?AnyObjectType = null,
-
     bus: u8,
     // See fn ports(), which returns these two as a slice for convenience
     ports_buffer: [7]u8 = [_]u8{0} ** 7,
@@ -151,7 +149,7 @@ pub const HubOrEndPointIdentifier = struct {
     }
 
     // Determine type based on the configured values. If indeterminate, returns null
-    pub fn infer_type(self: HubOrEndPointIdentifier) ?AnyObjectType {
+    pub fn id_type(self: HubOrEndPointIdentifier) ObjectType {
         if (self.ports_len == 0) {
             assert(self.iface == null);
             assert(self.endpoint == null);
@@ -160,7 +158,7 @@ pub const HubOrEndPointIdentifier = struct {
         if (self.iface == null) {
             assert(self.endpoint == null);
             // Could be hub or device
-            return null;
+            return .hub_or_device;
         }
         // if (self.endpoint == null) {
         //     return .iface;
@@ -169,20 +167,18 @@ pub const HubOrEndPointIdentifier = struct {
     }
 
     pub fn parent(self: HubOrEndPointIdentifier) ?HubOrEndPointIdentifier {
-        switch (self.type.?) {
+        switch (self.id_type()) {
             .root_hub => return null,
-            .hub, .device => {
+            .hub_or_device => {
                 assert(self.ports_len > 0);
                 if (self.ports_len == 1) {
                     return .{
-                        .type = .root_hub,
                         .bus = self.bus,
                     };
                 } else {
                     var parent_object = self;
                     parent_object.ports_buffer[self.ports_len - 1] = 0;
                     parent_object.ports_len -= 1;
-                    parent_object.type = .hub;
 
                     return parent_object;
                 }
@@ -194,7 +190,6 @@ pub const HubOrEndPointIdentifier = struct {
                     if (self.iface == 1) {
                         if (self.endpoint == 0) {
                             return .{
-                                .type = .root_hub,
                                 .bus = self.bus,
                             };
                         }
@@ -202,7 +197,6 @@ pub const HubOrEndPointIdentifier = struct {
                 }
 
                 return .{
-                    .type = .device,
                     .bus = self.bus,
                     .ports_buffer = self.ports_buffer,
                     .ports_len = self.ports_len,
@@ -213,7 +207,7 @@ pub const HubOrEndPointIdentifier = struct {
 
     /// Creates the same names as found in  '/sys/bus/usb/devices'
     pub fn format(self: HubOrEndPointIdentifier, writer: *std.io.Writer) !void {
-        if (self.type == .root_hub) {
+        if (self.id_type() == .root_hub) {
             try writer.print("usb{}", .{self.bus});
             return;
         }
@@ -226,11 +220,11 @@ pub const HubOrEndPointIdentifier = struct {
             try writer.print(".{}", .{p});
         }
 
-        if (self.type == .hub) {
+        if (self.id_type() == .hub_or_device) {
             return;
         }
 
-        if (self.type == .endpoint) {
+        if (self.id_type() == .endpoint) {
             try writer.print(":{}.{}", .{ self.iface.?, self.endpoint.? });
         }
     }
@@ -238,7 +232,6 @@ pub const HubOrEndPointIdentifier = struct {
     pub fn fromStr(str: []const u8) !HubOrEndPointIdentifier {
         if (std.mem.eql(u8, str[0..3], "usb")) {
             return .{
-                .type = .root_hub,
                 .bus = try std.fmt.parseInt(u8, str[3..], 10),
             };
         } else {
@@ -270,11 +263,9 @@ pub const HubOrEndPointIdentifier = struct {
             if (pre_semicolon.len == str.len) {
                 // There was no semicolon
                 // Could be a hub or a device
-                dev.type = null;
                 return dev;
             } else {
-                dev.type = .endpoint;
-
+                // endpoint
                 const post_semicolon = str[(pre_semicolon.len + 1)..];
                 assert(post_semicolon.len >= 3);
 
@@ -290,6 +281,25 @@ pub const HubOrEndPointIdentifier = struct {
             }
         }
     }
+
+    //   The type of the device, at least as far as can be inferred from its name
+    pub const ObjectType = enum {
+        root_hub,
+        hub_or_device,
+        endpoint,
+
+        pub fn format(self: ObjectType, writer: *std.io.Writer) !void {
+            return writer.print("{s}", .{@tagName(self)});
+        }
+
+        pub fn infer(self: ObjectType) ?AnyObjectType {
+            return switch (self) {
+                .root_hub => .root_hub,
+                .hub_or_device => null,
+                .endpoint => .endpoint,
+            };
+        }
+    };
 };
 
 pub const HubTree = struct {

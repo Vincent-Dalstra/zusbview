@@ -7,6 +7,8 @@ const usbTypes = zusbview.usbTypes;
 const usbExtractInfo = zusbview.usbExtractInfo;
 const graphviz = zusbview.graphviz;
 
+const settings = @import("settings.zig");
+
 const usb_max_tiers = usbTypes.usb_max_tiers;
 
 const ProgramContext = struct {
@@ -111,10 +113,12 @@ pub fn program(ctx: ProgramContext) !void {
             // assert(id == entry.key_ptr.*);
 
             // Every device, hub and root_hub has an endpoint associated with it; not important to draw
-            if (id.type == .endpoint) {
+            if (id.id_type() == .endpoint) {
                 if (id.iface == 1) {
                     if (id.endpoint == 0) {
-                        continue;
+                        if (settings.hide_mandatory_endpoint) {
+                            continue;
+                        }
                     }
                 }
             }
@@ -128,7 +132,7 @@ pub fn program(ctx: ProgramContext) !void {
             const node = graph.findNode(name) orelse try graph.newNode(name);
 
             // Shape indicates type
-            node.shape = switch (id.type.?) {
+            node.shape = switch (obj.inferred.type) {
                 .root_hub => .house,
                 .hub => .diamond,
                 .device => .box,
@@ -146,11 +150,28 @@ pub fn program(ctx: ProgramContext) !void {
             // }
 
             var speed = obj.parsed.speed;
-            if (speed == null) speed = map_id_to_info.get(id.parent().?).?.parsed.speed.?;
+            std.debug.print("self:{f}\n", .{id});
+            if (id.parent()) |p| {
+                std.debug.print("prnt:{f}\n", .{p});
+            }
+            if (speed == null) {
+                const parent = map_id_to_info.get(id.parent().?);
+                if (parent) |p| {
+                    speed = p.parsed.speed.?;
+                }
+            }
 
             // const speed = map_id_to_speed.get(id).?;
             if (speed) |s| {
                 const speed_string = if (s.isUsb2()) "Usb 2.0" else "Usb 3.0";
+                const cluster_name = try std.fmt.allocPrint(alloc, "cluster_{s}", .{speed_string});
+                defer alloc.free(cluster_name);
+                const cluster = graph.findCluster(cluster_name) orelse try graph.newCluster(cluster_name);
+
+                try cluster.addNode(node);
+            } else {
+                // This bit of code is probably not needed
+                const speed_string = "UNKNOWN SPEED";
                 const cluster_name = try std.fmt.allocPrint(alloc, "cluster_{s}", .{speed_string});
                 defer alloc.free(cluster_name);
                 const cluster = graph.findCluster(cluster_name) orelse try graph.newCluster(cluster_name);
@@ -167,10 +188,13 @@ pub fn program(ctx: ProgramContext) !void {
             }
 
             const parent_id = id.parent() orelse continue;
-            // std.debug.print("  parent = {f}", .{parent_id});
+            std.debug.print("  parent = {f}\n", .{parent_id});
 
             {
-                const parent_obj = map_id_to_info.get(parent_id).?;
+                const parent_obj = map_id_to_info.get(parent_id) orelse {
+                    std.debug.print("No parent in map!", .{});
+                    continue;
+                };
 
                 const parent_name = try nameFromId(alloc, parent_obj);
                 defer alloc.free(parent_name);
