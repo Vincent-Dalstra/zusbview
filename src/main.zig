@@ -61,8 +61,6 @@ pub fn main() !void {
 const SYSFS_USB_PATH = "/sys/bus/usb/devices";
 
 // var map_devnum_to_id: std.AutoHashMap(usbTypes.UniqueDeviceId, *usbTypes.HubOrEndPointIdentifier) = .empty;
-var map_id_to_object: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbTypes.AnyObject) = undefined;
-
 var map_id_to_info: std.AutoHashMap(usbTypes.HubOrEndPointIdentifier, *usbExtractInfo.UsbObjectInfo) = undefined;
 
 pub fn program(ctx: ProgramContext) !void {
@@ -215,43 +213,4 @@ pub fn program(ctx: ProgramContext) !void {
 
 fn nameFromId(gpa: Allocator, obj: *const usbExtractInfo.UsbObjectInfo) ![]u8 {
     return try std.fmt.allocPrint(gpa, "{f}", .{obj.*});
-}
-
-fn grabLine(reader: *std.io.Reader) ?[]u8 {
-    const bare_line = try reader.takeDelimiter('\n') orelse return null;
-    const line = std.mem.trim(u8, bare_line, "\r");
-
-    // std.debug.print("length {}: {s}\n", .{ line.len, line });
-
-    return line;
-}
-
-fn skipString(slice: []const u8, expected: []const u8) []const u8 {
-    assert(std.mem.eql(u8, expected, slice[0..expected.len]));
-    return slice[expected.len..];
-}
-
-fn parseIntUpTo(slice: []const u8, comptime end: u8, T: type, out: *?T) ![]const u8 {
-    const number_str = std.mem.sliceTo(slice, end);
-    out.* = std.fmt.parseUnsigned(T, number_str, 10) catch 1;
-    return slice[number_str.len..];
-}
-
-fn parseUsbSpeed(slice: []const u8, comptime end: u8, out: *?usbTypes.Speed) ![]const u8 {
-    const number_str = std.mem.sliceTo(slice, end);
-    const mbps = std.fmt.parseUnsigned(u32, number_str, 10) catch 1;
-
-    out.* = switch (mbps) {
-        1 => .LOW,
-        12 => .FULL,
-        480 => .HIGH,
-        5000 => .SUPER,
-        10000 => .SUPER_PLUS,
-        20000 => .SUPER_PLUS_X2,
-
-        else => unreachable,
-    };
-
-    out.* =
-        return slice[number_str.len..];
 }
