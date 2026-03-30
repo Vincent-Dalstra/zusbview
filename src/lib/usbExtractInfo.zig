@@ -18,7 +18,7 @@ pub const UsbObjectInfo = struct {
         product: ?[]u8 = null,
     },
     inferred: struct {
-        type: usbTypes.AnyObjectType,
+        type: usbTypes.ObjectType,
     } = undefined,
 
     pub fn infer(self: UsbObjectInfo) UsbObjectInfo {

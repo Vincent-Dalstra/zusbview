@@ -29,23 +29,23 @@ pub const DeviceType = enum {
     endpoint,
 };
 
-pub const AnyObject = struct {
-    id: HubOrEndPointIdentifier,
-    obj: AnyObjectEnum,
-};
+// pub const AnyObject = struct {
+//     id: HubOrEndPointIdentifier,
+//     obj: AnyObjectEnum,
+// };
 
-pub const AnyObjectType = enum {
+pub const ObjectType = enum {
     root_hub,
     hub,
     device,
     endpoint,
 
-    pub fn format(self: AnyObjectType, writer: *std.io.Writer) !void {
+    pub fn format(self: ObjectType, writer: *std.io.Writer) !void {
         return writer.print("{s}", .{@tagName(self)});
     }
 };
 
-pub const AnyObjectEnum = union(AnyObjectType) {
+pub const AnyObjectEnum = union(ObjectType) {
     root_hub: RootHub,
     hub: Hub,
     device: Device,
@@ -149,7 +149,7 @@ pub const HubOrEndPointIdentifier = struct {
     }
 
     // Determine type based on the configured values. If indeterminate, returns null
-    pub fn id_type(self: HubOrEndPointIdentifier) ObjectType {
+    pub fn id_type(self: HubOrEndPointIdentifier) IncompleteObjectType {
         if (self.ports_len == 0) {
             assert(self.iface == null);
             assert(self.endpoint == null);
@@ -282,17 +282,18 @@ pub const HubOrEndPointIdentifier = struct {
         }
     }
 
-    //   The type of the device, at least as far as can be inferred from its name
-    pub const ObjectType = enum {
+    // The type of the object, at least so far as we can infer from the filename (e.g 10-2.3:1.0)
+    // Hub's and device's have the same naming convention
+    pub const IncompleteObjectType = enum {
         root_hub,
         hub_or_device,
         endpoint,
 
-        pub fn format(self: ObjectType, writer: *std.io.Writer) !void {
+        pub fn format(self: IncompleteObjectType, writer: *std.io.Writer) !void {
             return writer.print("{s}", .{@tagName(self)});
         }
 
-        pub fn infer(self: ObjectType) ?AnyObjectType {
+        pub fn infer(self: IncompleteObjectType) ?ObjectType {
             return switch (self) {
                 .root_hub => .root_hub,
                 .hub_or_device => null,
