@@ -83,7 +83,7 @@ pub fn program(ctx: ProgramContext) !void {
 
     var usb_dir_it = usb_dir.iterateAssumeFirstIteration();
     while (try usb_dir_it.next()) |entry| {
-        std.debug.print("Next entry: {s}/{s} {any}\n", .{ SYSFS_USB_PATH, entry.name, entry.kind });
+        // std.debug.print("Next entry: {s}/{s} {any}\n", .{ SYSFS_USB_PATH, entry.name, entry.kind });
 
         // Open the directory representing the device
         var dev_dir = try usb_dir.openDir(entry.name, .{ .iterate = true });
@@ -148,10 +148,8 @@ pub fn program(ctx: ProgramContext) !void {
             // }
 
             var speed = obj.parsed.speed;
-            std.debug.print("self:{f}\n", .{id});
-            if (id.parent()) |p| {
-                std.debug.print("prnt:{f}\n", .{p});
-            }
+            // std.debug.print("self:{f}\n", .{id});
+
             if (speed == null) {
                 const parent = map_id_to_info.get(id.parent().?);
                 if (parent) |p| {
@@ -186,11 +184,11 @@ pub fn program(ctx: ProgramContext) !void {
             }
 
             const parent_id = id.parent() orelse continue;
-            std.debug.print("  parent = {f}\n", .{parent_id});
+            // std.debug.print("  parent = {f}\n", .{parent_id});
 
             {
                 const parent_obj = map_id_to_info.get(parent_id) orelse {
-                    std.debug.print("No parent in map!", .{});
+                    // std.debug.print("No parent in map!", .{});
                     continue;
                 };
 

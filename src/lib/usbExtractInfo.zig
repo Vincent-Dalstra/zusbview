@@ -68,7 +68,7 @@ pub fn usbExtractInfo(dirname: []const u8, dir: std.fs.Dir, string_alloc: Alloca
             continue;
         }
 
-        std.debug.print("{s}/{s} {any}\n", .{ dirname, entry2.name, entry2.kind });
+        // std.debug.print("{s}/{s} {any}\n", .{ dirname, entry2.name, entry2.kind });
         var raw_data: ?[]u8 = null;
         defer if (raw_data) |p| alloc.free(p);
         if (entry2.kind == .file) {
@@ -82,7 +82,7 @@ pub fn usbExtractInfo(dirname: []const u8, dir: std.fs.Dir, string_alloc: Alloca
 
         if (std.mem.eql(u8, "speed", entry2.name)) {
             obj.parsed.speed = try .fromStringMbps(data.?);
-            std.debug.print("speed = {}\n", .{obj.parsed.speed.?.inMbps()});
+            // std.debug.print("speed = {}\n", .{obj.parsed.speed.?.inMbps()});
         } else if (std.mem.eql(u8, "serial", entry2.name)) {
             // If it's a root hub, this will be a PCI number
             if (obj.parsed.id.id_type() == .root_hub) {
@@ -91,10 +91,10 @@ pub fn usbExtractInfo(dirname: []const u8, dir: std.fs.Dir, string_alloc: Alloca
                 obj.parsed.serial = temp;
             }
         } else if (std.mem.eql(u8, "devnum", entry2.name)) {
-            std.debug.print("{s}/{s} {any}\n", .{ dirname, entry2.name, entry2.kind });
+            // std.debug.print("{s}/{s} {any}\n", .{ dirname, entry2.name, entry2.kind });
             obj.parsed.devnum = try std.fmt.parseUnsigned(u7, data.?, 10);
         } else if (std.mem.eql(u8, "maxchild", entry2.name)) {
-            std.debug.print("{s}/{s} {any}\n", .{ dirname, entry2.name, entry2.kind });
+            // std.debug.print("{s}/{s} {any}\n", .{ dirname, entry2.name, entry2.kind });
             obj.parsed.maxchild = try std.fmt.parseUnsigned(u8, data.?, 10);
         } else if (std.mem.eql(u8, "manufacturer", entry2.name)) {
             obj.parsed.manufacturer = try string_alloc.dupe(u8, data.?);
@@ -108,3 +108,5 @@ pub fn usbExtractInfo(dirname: []const u8, dir: std.fs.Dir, string_alloc: Alloca
 
     return obj;
 }
+
+// fn extractPhysicalLocation(dir: std.fs.Dir, string_alloc: Allocator) !void {}
